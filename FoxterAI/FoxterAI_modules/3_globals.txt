@@ -1,0 +1,70 @@
+//+------------------------------------------------------------------+
+//|                                                    3_globals.mqh |
+//|                          Глобальные переменные для FoxterAI v1.6 |
+//+------------------------------------------------------------------+
+
+//--- Состояние тренда для каждого символа
+ENUM_TREND_STATE g_TrendState = TREND_NONE;
+double g_LastPivotPrice = 0;        // Последняя пивот-точка
+datetime g_LastPivotTime = 0;       // Время последнего пивота
+double g_CurrentBuyLevel = 0;       // Текущий уровень для покупки
+double g_CurrentSellLevel = 0;      // Текущий уровень для продажи
+
+//--- Состояние серий ордеров
+struct SeriesInfo {
+    int count;              // Количество ордеров
+    double totalLot;        // Суммарный лот
+    double averagePrice;    // Средняя цена
+    double lastPrice;       // Цена последнего ордера
+    double lastLot;         // Лот последнего ордера
+    int lastTicket;         // Ticket последнего ордера для надежности
+    datetime firstTime;     // Время первого ордера
+    datetime closeTime;     // Время закрытия серии
+    double balanceAtStart;  // Баланс на момент открытия серии
+    double breakeven;       // Уровень безубытка
+    double targetTP;        // Целевой TP (для визуализации)
+    bool active;            // Серия активна
+};
+
+SeriesInfo g_BuySeries;
+SeriesInfo g_SellSeries;
+
+//--- Переменные для панели управления
+bool g_BotEnabled = false;                        // Робот включен/выключен - ИНИЦИАЛИЗИРОВАНО!
+ENUM_TRADE_DIRECTION g_TradeDirection = TRADE_BOTH; // Направление торговли
+bool g_UseImpulse = true;                         // Использовать импульс
+double g_FirstLot = 0.01;                         // Начальный лот
+int g_MaxOrdersBuy = 10;                          // Макс. ордеров Buy
+int g_MaxOrdersSell = 10;                         // Макс. ордеров Sell
+double g_MartinCoeff = 1.5;                       // Коэффициент мартингейла
+double g_BasketProfitPercent = 0.1;               // % профита корзины
+double g_GridStepPercent = 50;                    // Шаг сетки %
+ENUM_BASKET_TYPE g_BasketType = BASKET_NONE;      // Тип корзины
+int g_BasketAfterN = 5;                           // После скольких ордеров объединять
+
+//--- Параметры для учета комиссий и проскальзывания
+bool g_IncludeCommissionSwap = false;             // Учитывать комиссию и своп в расчетах
+double g_EstimatedCommissionPerLot = 7.0;         // Примерная комиссия на лот (в валюте счета)
+double g_SlippagePercent = 0.1;                   // Компенсация проскальзывания (% от профита)
+
+bool g_FirstTickAfterInit = true;                 // Первый тик после инициализации
+
+//--- Позиция панели (КАРДИНАЛЬНО УВЕЛИЧЕН ОТСТУП!)
+int g_PanelPosX = 100;  // УВЕЛИЧЕНО до 100 пикселей (примерно 5-7 см от края)
+int g_PanelPosY = 50;   // Небольшой отступ сверху
+bool g_PanelDragging = false;
+int g_DragOffsetX = 0;
+int g_DragOffsetY = 0;
+
+//--- Флаг для блокировки перетаскивания при клике на кнопку
+bool g_ButtonClicked = false;
+
+//--- ТОЧНЫЕ размеры панели под контент
+const int PANEL_WIDTH = 340;
+const int PANEL_HEIGHT = 380;  // Точно под размер контента
+const int BUTTON_HEIGHT = 20;
+const int BUTTON_WIDTH = 88;
+const int EDIT_HEIGHT = 18;
+const int EDIT_WIDTH = 40;
+const int LABEL_HEIGHT = 14;
+const string PANEL_PREFIX = "FX_";

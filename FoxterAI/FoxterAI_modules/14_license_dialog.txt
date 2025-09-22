@@ -1,0 +1,403 @@
+//+------------------------------------------------------------------+
+//|                                            14_license_dialog.mqh |
+//|                   Диалог ввода лицензии для FoxterAI v1.6       |
+//|                      ЧЕРЕЗ WINDOWS DLL С БЛОКНОТОМ               |
+//+------------------------------------------------------------------+
+
+// Импортируем Windows функции
+#import "user32.dll"
+    int MessageBoxW(int hWnd, string text, string caption, int flags);
+    int GetForegroundWindow();
+#import
+
+#import "shell32.dll"
+    int ShellExecuteW(int hwnd, string operation, string file, string parameters, string directory, int showCmd);
+#import
+
+#define LICENSE_DIALOG_PREFIX "FX_LIC_"
+#define DIALOG_WIDTH 450
+#define DIALOG_HEIGHT 200
+
+bool g_LicenseDialogOpen = false;
+string g_EnteredLicenseKey = "";
+string g_InputFileName = "";
+
+//+------------------------------------------------------------------+
+//| ПОКАЗАТЬ ДИАЛОГ - ЧЕРЕЗ БЛОКНОТ                                 |
+//+------------------------------------------------------------------+
+void ShowLicenseDialog() {
+    int chartWidth = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+    int chartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+    
+    int dialogX = (chartWidth - DIALOG_WIDTH) / 2;
+    int dialogY = (chartHeight - DIALOG_HEIGHT) / 2;
+    
+    // Фон диалога
+    string bgName = LICENSE_DIALOG_PREFIX + "Background";
+    if(ObjectFind(0, bgName) >= 0) ObjectDelete(0, bgName);
+    
+    ObjectCreate(0, bgName, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+    ObjectSetInteger(0, bgName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+    ObjectSetInteger(0, bgName, OBJPROP_XDISTANCE, dialogX);
+    ObjectSetInteger(0, bgName, OBJPROP_YDISTANCE, dialogY);
+    ObjectSetInteger(0, bgName, OBJPROP_XSIZE, DIALOG_WIDTH);
+    ObjectSetInteger(0, bgName, OBJPROP_YSIZE, DIALOG_HEIGHT);
+    ObjectSetInteger(0, bgName, OBJPROP_BGCOLOR, C'43,45,48');
+    ObjectSetInteger(0, bgName, OBJPROP_BORDER_TYPE, BORDER_RAISED);
+    ObjectSetInteger(0, bgName, OBJPROP_COLOR, C'212,175,55');
+    ObjectSetInteger(0, bgName, OBJPROP_WIDTH, 2);
+    ObjectSetInteger(0, bgName, OBJPROP_SELECTABLE, false);
+    ObjectSetInteger(0, bgName, OBJPROP_ZORDER, 9000);
+    
+    // Заголовок
+    CreateDialogLabel(LICENSE_DIALOG_PREFIX + "Title", 
+               "АКТИВАЦИЯ FOXTERAI v1.6", 
+               dialogX + 20, dialogY + 20, 
+               C'212,175,55', 14, "Arial Bold");
+    
+    // Инструкция
+    CreateDialogLabel(LICENSE_DIALOG_PREFIX + "Info1", 
+               "Для ввода лицензионного ключа:", 
+               dialogX + 20, dialogY + 55, 
+               C'224,224,224', 11);
+    
+    CreateDialogLabel(LICENSE_DIALOG_PREFIX + "Info2", 
+               "1. Нажмите кнопку 'ВВЕСТИ КЛЮЧ'", 
+               dialogX + 20, dialogY + 75, 
+               C'224,224,224', 10);
+               
+    CreateDialogLabel(LICENSE_DIALOG_PREFIX + "Info3", 
+               "2. В открывшемся блокноте вставьте ключ (Ctrl+V)", 
+               dialogX + 20, dialogY + 92, 
+               C'224,224,224', 10);
+               
+    CreateDialogLabel(LICENSE_DIALOG_PREFIX + "Info4", 
+               "3. Сохраните (Ctrl+S) и закройте блокнот", 
+               dialogX + 20, dialogY + 109, 
+               C'224,224,224', 10);
+               
+    CreateDialogLabel(LICENSE_DIALOG_PREFIX + "Info5", 
+               "4. Нажмите 'АКТИВИРОВАТЬ'", 
+               dialogX + 20, dialogY + 126, 
+               C'224,224,224', 10);
+    
+    // Формат ключа
+    CreateDialogLabel(LICENSE_DIALOG_PREFIX + "Format", 
+               "Формат ключа: FXAI-2024-XXXX-XXXX", 
+               dialogX + 20, dialogY + 145, 
+               C'255,193,7', 9);
+    
+    // Кнопки
+    CreateDialogButton(LICENSE_DIALOG_PREFIX + "BtnInput", 
+                "ВВЕСТИ КЛЮЧ", 
+                dialogX + 80, dialogY + 165, 120, 25, 
+                C'33,150,243');
+    
+    CreateDialogButton(LICENSE_DIALOG_PREFIX + "BtnActivate", 
+                "АКТИВИРОВАТЬ", 
+                dialogX + 210, dialogY + 165, 100, 25, 
+                C'46,125,50');
+    
+    CreateDialogButton(LICENSE_DIALOG_PREFIX + "BtnCancel", 
+                "ОТМЕНА", 
+                dialogX + 320, dialogY + 165, 70, 25, 
+                C'198,40,40');
+    
+    g_LicenseDialogOpen = true;
+    ChartRedraw();
+    
+    Print("========================================");
+    Print("ДИАЛОГ ЛИЦЕНЗИИ ОТКРЫТ");
+    Print("Нажмите 'ВВЕСТИ КЛЮЧ' для открытия блокнота");
+    Print("========================================");
+}
+
+//+------------------------------------------------------------------+
+//| ЗАКРЫТЬ ДИАЛОГ                                                   |
+//+------------------------------------------------------------------+
+void CloseLicenseDialog() {
+    string objects[] = {"Background", "Title", "Info1", "Info2", "Info3", 
+                       "Info4", "Info5", "Format", "BtnInput", "BtnActivate", "BtnCancel"};
+    
+    for(int i = 0; i < ArraySize(objects); i++) {
+        ObjectDelete(0, LICENSE_DIALOG_PREFIX + objects[i]);
+    }
+    
+    g_LicenseDialogOpen = false;
+    ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| ОТКРЫТЬ БЛОКНОТ ДЛЯ ВВОДА КЛЮЧА                                |
+//+------------------------------------------------------------------+
+void OpenNotepadForKey() {
+    // Создаем временный файл для ключа
+    g_InputFileName = "FoxterAI_temp_key.txt";
+    int handle = FileOpen(g_InputFileName, FILE_WRITE | FILE_TXT);
+    
+    if(handle != INVALID_HANDLE) {
+        FileWriteString(handle, "ВСТАВЬТЕ СЮДА ВАШ ЛИЦЕНЗИОННЫЙ КЛЮЧ\n");
+        FileWriteString(handle, "Формат: FXAI-2024-XXXX-XXXX\n");
+        FileWriteString(handle, "\nКлюч: ");
+        FileClose(handle);
+        
+        // Получаем полный путь к файлу
+        string terminal_path = TerminalInfoString(TERMINAL_DATA_PATH);
+        string full_path = terminal_path + "\\MQL4\\Files\\" + g_InputFileName;
+        
+        Print("Открываем файл: ", full_path);
+        
+        // Открываем в блокноте
+        int result = ShellExecuteW(0, "open", "notepad.exe", full_path, "", 1);
+        
+        if(result > 32) {
+            // Показываем Windows диалог с инструкцией
+            MessageBoxW(GetForegroundWindow(),
+                "Блокнот открыт!\n\n" +
+                "1. Удалите весь текст\n" +
+                "2. Вставьте ваш ключ (Ctrl+V)\n" +
+                "3. Сохраните файл (Ctrl+S)\n" +
+                "4. Закройте блокнот\n" +
+                "5. Нажмите АКТИВИРОВАТЬ",
+                "Инструкция",
+                0x00000040);  // MB_ICONINFORMATION
+        } else {
+            MessageBoxW(GetForegroundWindow(),
+                "Не удалось открыть блокнот\n\n" +
+                "Откройте вручную файл:\n" + full_path,
+                "Ошибка",
+                0x00000010);  // MB_ICONERROR
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| ПРОЧИТАТЬ КЛЮЧ ИЗ ВРЕМЕННОГО ФАЙЛА                             |
+//+------------------------------------------------------------------+
+string ReadKeyFromTempFile() {
+    if(g_InputFileName == "") {
+        return "";
+    }
+    
+    int handle = FileOpen(g_InputFileName, FILE_READ | FILE_TXT);
+    if(handle != INVALID_HANDLE) {
+        string content = "";
+        while(!FileIsEnding(handle)) {
+            string line = FileReadString(handle);
+            content = content + line;
+        }
+        FileClose(handle);
+        
+        // Ищем ключ в содержимом
+        int pos = StringFind(content, "FXAI-");
+        if(pos >= 0) {
+            string key = StringSubstr(content, pos, 19);
+            key = TrimLicenseString(key);
+            
+            // Проверяем формат
+            if(StringLen(key) == 19 && ValidateKeyFormat(key)) {
+                return key;
+            }
+        }
+        
+        // Может весь файл это ключ?
+        content = TrimLicenseString(content);
+        if(StringLen(content) == 19 && ValidateKeyFormat(content)) {
+            return content;
+        }
+    }
+    
+    return "";
+}
+
+//+------------------------------------------------------------------+
+//| ПРОВЕРКА ФОРМАТА КЛЮЧА                                          |
+//+------------------------------------------------------------------+
+bool ValidateKeyFormat(string key) {
+    if(StringLen(key) != 19) return false;
+    if(StringSubstr(key, 0, 5) != "FXAI-") return false;
+    
+    // Проверяем структуру: FXAI-2024-XXXX-XXXX
+    if(StringGetCharacter(key, 4) != '-') return false;
+    if(StringGetCharacter(key, 9) != '-') return false;
+    if(StringGetCharacter(key, 14) != '-') return false;
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| ОБРАБОТКА КЛИКОВ                                                |
+//+------------------------------------------------------------------+
+bool HandleLicenseDialogClick(string objName) {
+    if(StringFind(objName, LICENSE_DIALOG_PREFIX) != 0) return false;
+    
+    // ВВЕСТИ КЛЮЧ
+    if(objName == LICENSE_DIALOG_PREFIX + "BtnInput") {
+        ObjectSetInteger(0, objName, OBJPROP_STATE, false);
+        OpenNotepadForKey();
+        return true;
+    }
+    
+    // АКТИВИРОВАТЬ
+    if(objName == LICENSE_DIALOG_PREFIX + "BtnActivate") {
+        ObjectSetInteger(0, objName, OBJPROP_STATE, false);
+        
+        // Читаем из временного файла
+        g_EnteredLicenseKey = ReadKeyFromTempFile();
+        
+        Print("Проверка ключа: [", g_EnteredLicenseKey, "]");
+        
+        if(!ValidateKeyFormat(g_EnteredLicenseKey)) {
+            int choice = MessageBoxW(GetForegroundWindow(),
+                "Ключ не найден или неверный формат!\n\n" +
+                "Убедитесь что:\n" +
+                "1. Вы нажали 'ВВЕСТИ КЛЮЧ'\n" +
+                "2. Вставили ключ в блокнот\n" +
+                "3. Сохранили файл (Ctrl+S)\n" +
+                "4. Закрыли блокнот\n\n" +
+                "Попробовать еще раз?",
+                "Ошибка ввода ключа",
+                0x00000004 | 0x00000030);  // MB_YESNO | MB_ICONEXCLAMATION
+            
+            if(choice == 6) { // IDYES = 6
+                OpenNotepadForKey();
+            }
+            
+            return true;
+        }
+        
+        // Сохраняем ключ
+        SaveLicenseKeyToFile(g_EnteredLicenseKey);
+        
+        // Удаляем временный файл
+        if(g_InputFileName != "") {
+            FileDelete(g_InputFileName);
+            g_InputFileName = "";
+        }
+        
+        CloseLicenseDialog();
+        
+        // Показываем диалог проверки
+        MessageBoxW(GetForegroundWindow(),
+            "Проверка лицензии...\nПодождите несколько секунд...",
+            "Активация",
+            0x00000040);  // MB_ICONINFORMATION
+        
+        // Активируем
+        if(InitializeLicense(g_EnteredLicenseKey)) {
+            MessageBoxW(GetForegroundWindow(),
+                "УСПЕХ!\n\nЛицензия активирована!\nСоветник готов к работе.",
+                "Активация успешна",
+                0x00000040);  // MB_ICONINFORMATION
+            
+            g_BotEnabled = true;
+            LoadSettings();
+            DetectInitialTrend();
+            if(ShowPanel) {
+                CreateInteractivePanel();
+            }
+        } else {
+            string errorMsg = "ОШИБКА АКТИВАЦИИ:\n\n" + g_LicenseMessage + 
+                            "\n\nВозможные причины:\n" +
+                            "• Неверный ключ\n" +
+                            "• Нет интернета\n" +
+                            "• Ключ привязан к другому счету\n" +
+                            "• Сервер недоступен";
+            
+            MessageBoxW(GetForegroundWindow(),
+                errorMsg,
+                "Ошибка активации", 
+                0x00000010);  // MB_ICONERROR
+            
+            ShowLicenseDialog();
+        }
+        
+        return true;
+    }
+    
+    // ОТМЕНА
+    if(objName == LICENSE_DIALOG_PREFIX + "BtnCancel") {
+        ObjectSetInteger(0, objName, OBJPROP_STATE, false);
+        
+        if(g_InputFileName != "") {
+            FileDelete(g_InputFileName);
+            g_InputFileName = "";
+        }
+        
+        CloseLicenseDialog();
+        
+        if(!IsLicenseValidForTrading()) {
+            MessageBoxW(GetForegroundWindow(),
+                "Без лицензии советник не может торговать!",
+                "Предупреждение",
+                0x00000030);  // MB_ICONEXCLAMATION
+            g_BotEnabled = false;
+        }
+        
+        return true;
+    }
+    
+    return false;
+}
+
+//+------------------------------------------------------------------+
+//| ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ                                         |
+//+------------------------------------------------------------------+
+void CreateDialogLabel(string name, string text, int x, int y, color col, int size = 10, string font = "Arial") {
+    if(ObjectFind(0, name) >= 0) ObjectDelete(0, name);
+    
+    ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+    ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+    ObjectSetString(0, name, OBJPROP_TEXT, text);
+    ObjectSetString(0, name, OBJPROP_FONT, font);
+    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, size);
+    ObjectSetInteger(0, name, OBJPROP_COLOR, col);
+    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+    ObjectSetInteger(0, name, OBJPROP_ZORDER, 9001);
+}
+
+void CreateDialogButton(string name, string text, int x, int y, int width, int height, color bg) {
+    if(ObjectFind(0, name) >= 0) ObjectDelete(0, name);
+    
+    ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
+    ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+    ObjectSetInteger(0, name, OBJPROP_XSIZE, width);
+    ObjectSetInteger(0, name, OBJPROP_YSIZE, height);
+    ObjectSetString(0, name, OBJPROP_TEXT, text);
+    ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 9);
+    ObjectSetInteger(0, name, OBJPROP_COLOR, clrWhite);
+    ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
+    ObjectSetInteger(0, name, OBJPROP_STATE, false);
+    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+    ObjectSetInteger(0, name, OBJPROP_ZORDER, 9002);
+}
+
+//+------------------------------------------------------------------+
+//| ОБРЕЗКА СТРОКИ ОТ ПРОБЕЛОВ И НЕВИДИМЫХ СИМВОЛОВ                |
+//+------------------------------------------------------------------+
+string TrimLicenseString(string str) {
+    string result = str;
+    
+    // Удаляем все невидимые символы в начале
+    while(StringLen(result) > 0) {
+        ushort charCode = StringGetCharacter(result, 0);
+        if(charCode <= 32) {  // Пробел и все контрольные символы
+            result = StringSubstr(result, 1);
+        } else break;
+    }
+    
+    // Удаляем все невидимые символы в конце
+    while(StringLen(result) > 0) {
+        ushort charCode = StringGetCharacter(result, StringLen(result)-1);
+        if(charCode <= 32) {
+            result = StringSubstr(result, 0, StringLen(result)-1);
+        } else break;
+    }
+    
+    return result;
+}

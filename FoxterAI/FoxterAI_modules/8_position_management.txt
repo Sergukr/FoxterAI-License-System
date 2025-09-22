@@ -1,0 +1,381 @@
+//+------------------------------------------------------------------+
+//|                                      8_position_management.mqh |
+//|                   Управление позициями для FoxterAI v1.6        |
+//|     ИСПРАВЛЕНО: Усреднение работает независимо для каждой сетки |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| УПРАВЛЕНИЕ ПОЗИЦИЯМИ                                             |
+//+------------------------------------------------------------------+
+void ManagePositions() {
+    //--- Проверка необходимости усреднения
+    CheckAveraging();
+    
+    //--- ВАЖНО: Управление TP работает ВСЕГДА, независимо от тренда!
+    //--- Это позволяет закрыть сетку в профит даже при смене тренда
+    ManageBasketTP();
+}
+
+//+------------------------------------------------------------------+
+//| ПРОВЕРКА НЕОБХОДИМОСТИ УСРЕДНЕНИЯ - СТРОГО ПО ТРЕНДУ            |
+//+------------------------------------------------------------------+
+void CheckAveraging() {
+    //--- БЛОКИРОВКА при невалидной лицензии
+    if(!IsLicenseValidForTrading()) {
+        Print("Усреднение заблокировано: лицензия недействительна");
+        return;
+    }
+    //--- Рассчитываем шаг сетки
+    double atr = CalculateCustomATR(Symbol(), Grid_Timeframe, Grid_ATR_Period);
+    double gridStep = atr * (g_GridStepPercent / 100.0);
+    
+    //--- Проверяем направление торговли
+    bool canBuy = (g_TradeDirection == TRADE_BOTH || g_TradeDirection == TRADE_BUY_ONLY);
+    bool canSell = (g_TradeDirection == TRADE_BOTH || g_TradeDirection == TRADE_SELL_ONLY);
+    
+    //--- Проверка для Buy серии
+    if(g_BuySeries.active && g_BuySeries.count > 0 && g_BuySeries.count < g_MaxOrdersBuy) {
+        //--- КРИТИЧЕСКИ ВАЖНО: Усредняем BUY только при тренде BUY!
+        if(g_TrendState == TREND_BUY) {
+            //--- Проверка направления торговли
+            if(canBuy) {
+                //--- Проверка валидности lastPrice
+                if(g_BuySeries.lastPrice <= 0) {
+                    Print("ОШИБКА: BUY lastPrice = 0, усреднение невозможно!");
+                } else {
+                    double currentPrice = Ask;
+                    double distance = g_BuySeries.lastPrice - currentPrice;
+                    
+                    //--- Проверка дистанции для усреднения
+                    if(distance >= gridStep) {
+                        //--- Проверяем фильтры
+                        if(CheckFilters()) {
+                            Print("✅ Усреднение BUY (тренд BUY): дистанция ", distance / Point, 
+                                  " пунктов >= шаг ", gridStep / Point, " пунктов");
+                            OpenPosition(OP_BUY);
+                        }
+                    }
+                }
+            }
+        } else {
+            static datetime lastLogBuy = 0;
+            if(TimeCurrent() - lastLogBuy > 300) { // Лог раз в 5 минут
+                lastLogBuy = TimeCurrent();
+                Print("⚠️ BUY сетка ждет тренд BUY для усреднения. Текущий тренд: ",
+                      g_TrendState == TREND_SELL ? "SELL" : "НЕТ",
+                      ". TP продолжает работать!");
+            }
+            // НЕ усредняем, но ManageBasketTP() продолжит следить за TP!
+            // ВАЖНО: НЕТ return! Продолжаем проверять SELL серию!
+        }
+    }
+    
+    //--- Проверка для Sell серии - ВАЖНО: проверяется НЕЗАВИСИМО от BUY!
+    if(g_SellSeries.active && g_SellSeries.count > 0 && g_SellSeries.count < g_MaxOrdersSell) {
+        //--- КРИТИЧЕСКИ ВАЖНО: Усредняем SELL только при тренде SELL!
+        if(g_TrendState == TREND_SELL) {
+            //--- Проверка направления торговли
+            if(canSell) {
+                //--- Проверка валидности lastPrice
+                if(g_SellSeries.lastPrice <= 0) {
+                    Print("ОШИБКА: SELL lastPrice = 0, усреднение невозможно!");
+                } else {
+                    double currentPrice = Bid;
+                    double distance = currentPrice - g_SellSeries.lastPrice;
+                    
+                    //--- Проверка дистанции для усреднения
+                    if(distance >= gridStep) {
+                        //--- Проверяем фильтры
+                        if(CheckFilters()) {
+                            Print("✅ Усреднение SELL (тренд SELL): дистанция ", distance / Point, 
+                                  " пунктов >= шаг ", gridStep / Point, " пунктов");
+                            OpenPosition(OP_SELL);
+                        }
+                    }
+                }
+            }
+        } else {
+            static datetime lastLogSell = 0;
+            if(TimeCurrent() - lastLogSell > 300) { // Лог раз в 5 минут
+                lastLogSell = TimeCurrent();
+                Print("⚠️ SELL сетка ждет тренд SELL для усреднения. Текущий тренд: ",
+                      g_TrendState == TREND_BUY ? "BUY" : "НЕТ",
+                      ". TP продолжает работать!");
+            }
+            // НЕ усредняем, но ManageBasketTP() продолжит следить за TP!
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| УПРАВЛЕНИЕ TP КОРЗИНЫ - РАБОТАЕТ ВСЕГДА!                        |
+//+------------------------------------------------------------------+
+void ManageBasketTP() {
+    //--- ВАЖНО: Эта функция работает НЕЗАВИСИМО от тренда!
+    //--- Даже если тренд сменился, существующие сетки должны закрыться по TP
+    
+    //--- Проверка типа корзины
+    if(g_BasketType == BASKET_NONE) {
+        //--- Раздельное управление сериями
+        ManageSingleSeriesTP(OP_BUY);
+        ManageSingleSeriesTP(OP_SELL);
+        
+        //--- КРИТИЧЕСКИ ВАЖНО: Обновляем физические TP для защиты от сбоев!
+        UpdatePhysicalTP(OP_BUY);
+        UpdatePhysicalTP(OP_SELL);
+    }
+    else if(g_BasketType == BASKET_IMMEDIATE) {
+        //--- Немедленное объединение при встречных сериях
+        if(g_BuySeries.active && g_SellSeries.active) {
+            ManageCombinedBasket();
+            //--- КРИТИЧЕСКИ ВАЖНО: Обновляем физические TP для комбинированной корзины!
+            UpdateCombinedPhysicalTP();
+        }
+        else {
+            ManageSingleSeriesTP(OP_BUY);
+            ManageSingleSeriesTP(OP_SELL);
+            UpdatePhysicalTP(OP_BUY);
+            UpdatePhysicalTP(OP_SELL);
+        }
+    }
+    else if(g_BasketType == BASKET_AFTER_N) {
+        //--- Объединение после N усреднений
+        bool shouldCombine = false;
+        if(g_BuySeries.active && g_SellSeries.active) {
+            if(g_BuySeries.count >= g_BasketAfterN || g_SellSeries.count >= g_BasketAfterN) {
+                shouldCombine = true;
+            }
+        }
+        
+        if(shouldCombine) {
+            ManageCombinedBasket();
+            //--- КРИТИЧЕСКИ ВАЖНО: Обновляем физические TP!
+            UpdateCombinedPhysicalTP();
+        }
+        else {
+            ManageSingleSeriesTP(OP_BUY);
+            ManageSingleSeriesTP(OP_SELL);
+            UpdatePhysicalTP(OP_BUY);
+            UpdatePhysicalTP(OP_SELL);
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| ОБНОВЛЕНИЕ ФИЗИЧЕСКОГО TP ДЛЯ ЗАЩИТЫ ОТ СБОЕВ                  |
+//+------------------------------------------------------------------+
+void UpdatePhysicalTP(int orderType) {
+    //--- Работаем только с активными сериями
+    bool seriesActive = (orderType == OP_BUY) ? g_BuySeries.active : g_SellSeries.active;
+    int seriesCount = (orderType == OP_BUY) ? g_BuySeries.count : g_SellSeries.count;
+    double seriesTargetTP = (orderType == OP_BUY) ? g_BuySeries.targetTP : g_SellSeries.targetTP;
+    
+    if(!seriesActive || seriesCount == 0) return;
+    
+    //--- Для первого ордера TP уже установлен при открытии
+    if(seriesCount == 1) {
+        // Проверяем что TP установлен
+        for(int i = 0; i < OrdersTotal(); i++) {
+            if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+            if(OrderSymbol() != Symbol()) continue;
+            if(OrderMagicNumber() != MagicNumber) continue;
+            if(OrderType() != orderType) continue;
+            
+            if(OrderTakeProfit() == 0) {
+                // Восстанавливаем TP если он потерян
+                SetTakeProfit(OrderTicket(), orderType);
+            }
+        }
+        return;
+    }
+    
+    //--- Для серии из 2+ ордеров устанавливаем общий TP
+    if(seriesTargetTP <= 0) return;
+    
+    //--- Проходим по всем ордерам серии и обновляем TP
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() != orderType) continue;
+        
+        //--- Если TP отличается от целевого - обновляем
+        if(MathAbs(OrderTakeProfit() - seriesTargetTP) > Point) {
+            bool result = OrderModify(OrderTicket(), OrderOpenPrice(), OrderStopLoss(), 
+                          seriesTargetTP, 0, clrNONE);
+            if(!result) {
+                // Логируем ошибку, но продолжаем работу
+                Print("Ошибка обновления TP для ордера #", OrderTicket(), ": ", GetLastError());
+            }
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| ОБНОВЛЕНИЕ ФИЗИЧЕСКОГО TP ДЛЯ КОМБИНИРОВАННОЙ КОРЗИНЫ          |
+//+------------------------------------------------------------------+
+void UpdateCombinedPhysicalTP() {
+    //--- Рассчитываем целевую прибыль
+    double targetProfit = AccountBalance() * (g_BasketProfitPercent / 100.0);
+    double pointValue = MarketInfo(Symbol(), MODE_TICKVALUE);
+    double tickSize = MarketInfo(Symbol(), MODE_TICKSIZE);
+    
+    //--- Учитываем комиссию и своп если включено
+    if(g_IncludeCommissionSwap) {
+        double currentCommissionSwap = 0;
+        for(int i = 0; i < OrdersTotal(); i++) {
+            if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+            if(OrderSymbol() != Symbol()) continue;
+            if(OrderMagicNumber() != MagicNumber) continue;
+            if(OrderType() == OP_BUY || OrderType() == OP_SELL) {
+                currentCommissionSwap += OrderSwap() + OrderCommission();
+            }
+        }
+        targetProfit -= currentCommissionSwap; // Компенсируем накопленные издержки
+    }
+    
+    //--- Учитываем проскальзывание
+    double slippageCompensation = targetProfit * (g_SlippagePercent / 100.0);
+    targetProfit += slippageCompensation;
+    
+    //--- Для BUY ордеров
+    if(g_BuySeries.active && g_BuySeries.count > 0) {
+        double buyBreakeven = CalculateBreakeven(OP_BUY);
+        if(buyBreakeven > 0 && pointValue > 0 && g_BuySeries.totalLot > 0) {
+            double pointsNeeded = (targetProfit / (g_BuySeries.totalLot * pointValue)) * tickSize / Point;
+            double buyTP = buyBreakeven + pointsNeeded * Point;
+            
+            //--- Обновляем TP для всех Buy ордеров
+            for(int i = 0; i < OrdersTotal(); i++) {
+                if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+                if(OrderSymbol() != Symbol()) continue;
+                if(OrderMagicNumber() != MagicNumber) continue;
+                if(OrderType() != OP_BUY) continue;
+                
+                if(MathAbs(OrderTakeProfit() - buyTP) > Point) {
+                    bool result = OrderModify(OrderTicket(), OrderOpenPrice(), OrderStopLoss(), buyTP, 0, clrNONE);
+                    if(!result) {
+                        Print("Ошибка обновления TP для Buy #", OrderTicket(), ": ", GetLastError());
+                    }
+                }
+            }
+        }
+    }
+    
+    //--- Для SELL ордеров
+    if(g_SellSeries.active && g_SellSeries.count > 0) {
+        double sellBreakeven = CalculateBreakeven(OP_SELL);
+        if(sellBreakeven > 0 && pointValue > 0 && g_SellSeries.totalLot > 0) {
+            double pointsNeeded = (targetProfit / (g_SellSeries.totalLot * pointValue)) * tickSize / Point;
+            double sellTP = sellBreakeven - pointsNeeded * Point;
+            
+            //--- Обновляем TP для всех Sell ордеров
+            for(int i = 0; i < OrdersTotal(); i++) {
+                if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+                if(OrderSymbol() != Symbol()) continue;
+                if(OrderMagicNumber() != MagicNumber) continue;
+                if(OrderType() != OP_SELL) continue;
+                
+                if(MathAbs(OrderTakeProfit() - sellTP) > Point) {
+                    bool result = OrderModify(OrderTicket(), OrderOpenPrice(), OrderStopLoss(), sellTP, 0, clrNONE);
+                    if(!result) {
+                        Print("Ошибка обновления TP для Sell #", OrderTicket(), ": ", GetLastError());
+                    }
+                }
+            }
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| УПРАВЛЕНИЕ TP ОДНОЙ СЕРИИ - РАБОТАЕТ НЕЗАВИСИМО ОТ ТРЕНДА      |
+//+------------------------------------------------------------------+
+void ManageSingleSeriesTP(int orderType) {
+    //--- ВАЖНО: Эта функция НЕ проверяет тренд!
+    //--- Сетка должна закрыться по TP даже если тренд сменился
+    
+    //--- Определяем параметры серии
+    bool seriesActive = (orderType == OP_BUY) ? g_BuySeries.active : g_SellSeries.active;
+    int seriesCount = (orderType == OP_BUY) ? g_BuySeries.count : g_SellSeries.count;
+    double seriesTargetTP = (orderType == OP_BUY) ? g_BuySeries.targetTP : g_SellSeries.targetTP;
+    double seriesBalanceAtStart = (orderType == OP_BUY) ? g_BuySeries.balanceAtStart : g_SellSeries.balanceAtStart;
+    
+    //--- Если серия не активна, выходим
+    if(!seriesActive) return;
+    
+    //--- Если только 1 ордер, TP установлен как ордерный
+    if(seriesCount == 1) {
+        return;
+    }
+    
+    //--- Для серии из 2+ ордеров проверяем TP
+    double currentPrice = (orderType == OP_BUY) ? Bid : Ask;
+    
+    //--- Проверяем достижение TP по цене
+    bool priceReachedTP = false;
+    if(seriesTargetTP > 0) {
+        if(orderType == OP_BUY) {
+            priceReachedTP = (currentPrice >= seriesTargetTP);
+        } else {
+            priceReachedTP = (currentPrice <= seriesTargetTP);
+        }
+    }
+    
+    //--- Рассчитываем текущую прибыль серии
+    double seriesProfit = 0;
+    int ordersCount = 0;
+    
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() != orderType) continue;
+        
+        seriesProfit += OrderProfit() + OrderSwap() + OrderCommission();
+        ordersCount++;
+    }
+    
+    //--- Целевая прибыль
+    double targetProfit = seriesBalanceAtStart * (g_BasketProfitPercent / 100.0);
+    
+    //--- Проверяем условия закрытия (БЕЗ ПРОВЕРКИ ТРЕНДА!)
+    if(ordersCount > 0) {
+        if(priceReachedTP || seriesProfit >= targetProfit) {
+            Print("✅ Серия ", (orderType == OP_BUY ? "BUY" : "SELL"), 
+                  " достигла цели при тренде ", 
+                  g_TrendState == TREND_BUY ? "BUY" : (g_TrendState == TREND_SELL ? "SELL" : "НЕТ"),
+                  ". Прибыль: $", seriesProfit);
+            CloseSeriesOrders(orderType);
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| УПРАВЛЕНИЕ КОМБИНИРОВАННОЙ КОРЗИНОЙ                             |
+//+------------------------------------------------------------------+
+void ManageCombinedBasket() {
+    //--- Рассчитываем общую прибыль всех ордеров
+    double totalProfit = 0;
+    int totalOrders = 0;
+    
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
+        
+        totalProfit += OrderProfit() + OrderSwap() + OrderCommission();
+        totalOrders++;
+    }
+    
+    //--- Целевая прибыль
+    double targetProfit = AccountBalance() * (g_BasketProfitPercent / 100.0);
+    
+    //--- Проверяем достижение цели (БЕЗ ПРОВЕРКИ ТРЕНДА!)
+    if(totalProfit >= targetProfit && totalOrders > 0) {
+        Print("✅ Комбинированная корзина достигла цели при тренде ",
+              g_TrendState == TREND_BUY ? "BUY" : (g_TrendState == TREND_SELL ? "SELL" : "НЕТ"),
+              ". Прибыль: $", totalProfit);
+        CloseAllOrders();
+    }
+}

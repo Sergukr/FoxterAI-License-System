@@ -1,0 +1,228 @@
+//+------------------------------------------------------------------+
+//|                                           5_trend_functions.mqh |
+//|                      Функции работы с трендом для FoxterAI v1.6 |
+//|                              БЕЗ БЛОКИРОВОК                      |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| РАСЧЕТ НЕСТАНДАРТНОГО ATR                                        |
+//+------------------------------------------------------------------+
+double CalculateCustomATR(string symbol, int timeframe, int period, int shift = 1) {
+    double sum = 0;
+    
+    for(int i = shift; i < shift + period; i++) {
+        double high = iHigh(symbol, timeframe, i);
+        double low = iLow(symbol, timeframe, i);
+        sum += (high - low);
+    }
+    
+    return (period > 0) ? sum / period : 0;
+}
+
+//+------------------------------------------------------------------+
+//| ПРОВЕРКА НАЛИЧИЯ АКТИВНЫХ ОРДЕРОВ В СЕРИИ                       |
+//+------------------------------------------------------------------+
+bool HasActiveOrders(int orderType) {
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() == orderType) {
+            return true; // Есть хотя бы один ордер
+        }
+    }
+    return false;
+}
+
+//+------------------------------------------------------------------+
+//| ОПРЕДЕЛЕНИЕ НАЧАЛЬНОГО ТРЕНДА                                    |
+//+------------------------------------------------------------------+
+void DetectInitialTrend() {
+    //--- Ищем последний пивот в истории
+    double atr = CalculateCustomATR(Symbol(), TrendTimeframe, TrendATR_Period);
+    
+    for(int i = 1; i < 100; i++) {
+        double high = iHigh(Symbol(), TrendTimeframe, i);
+        double low = iLow(Symbol(), TrendTimeframe, i);
+        double close = iClose(Symbol(), TrendTimeframe, i);
+        double open = iOpen(Symbol(), TrendTimeframe, i);
+        
+        //--- Проверка на слом вверх (бычий пивот)
+        if(i > 1) {
+            double prevLow = iLow(Symbol(), TrendTimeframe, i + 1);
+            double buyLevel = prevLow + atr;
+            
+            //--- Тело свечи закрылось выше уровня
+            double bodyClose = (close > open) ? close : open;
+            if(bodyClose > buyLevel) {
+                g_TrendState = TREND_BUY;
+                g_LastPivotPrice = low;
+                g_LastPivotTime = iTime(Symbol(), TrendTimeframe, i);
+                g_CurrentBuyLevel = g_LastPivotPrice + atr;
+                g_CurrentSellLevel = g_LastPivotPrice - atr;
+                
+                Print("Начальный тренд: BUY, пивот = ", g_LastPivotPrice);
+                
+                //--- Визуализация
+                if(ShowVisualObjects && (ShowPivots || ShowATRLevels)) {
+                    DrawPivotAndLevels();
+                }
+                return;
+            }
+        }
+        
+        //--- Проверка на слом вниз (медвежий пивот)
+        if(i > 1) {
+            double prevHigh = iHigh(Symbol(), TrendTimeframe, i + 1);
+            double sellLevel = prevHigh - atr;
+            
+            //--- Тело свечи закрылось ниже уровня
+            double bodyClose = (close < open) ? close : open;
+            if(bodyClose < sellLevel) {
+                g_TrendState = TREND_SELL;
+                g_LastPivotPrice = high;
+                g_LastPivotTime = iTime(Symbol(), TrendTimeframe, i);
+                g_CurrentBuyLevel = g_LastPivotPrice + atr;
+                g_CurrentSellLevel = g_LastPivotPrice - atr;
+                
+                Print("Начальный тренд: SELL, пивот = ", g_LastPivotPrice);
+                
+                //--- Визуализация
+                if(ShowVisualObjects && (ShowPivots || ShowATRLevels)) {
+                    DrawPivotAndLevels();
+                }
+                return;
+            }
+        }
+    }
+    
+    Print("Начальный тренд не определен");
+}
+
+//+------------------------------------------------------------------+
+//| ОБНОВЛЕНИЕ ТРЕНДА                                                |
+//+------------------------------------------------------------------+
+void UpdateTrend() {
+    //--- Получаем данные последней закрытой свечи
+    double high = iHigh(Symbol(), TrendTimeframe, 1);
+    double low = iLow(Symbol(), TrendTimeframe, 1);
+    double close = iClose(Symbol(), TrendTimeframe, 1);
+    double open = iOpen(Symbol(), TrendTimeframe, 1);
+    
+    double atr = CalculateCustomATR(Symbol(), TrendTimeframe, TrendATR_Period);
+    
+    //--- Определяем тело свечи
+    double bodyTop = MathMax(close, open);
+    double bodyBottom = MathMin(close, open);
+    
+    //--- Флаг для проверки, была ли смена тренда
+    bool trendChanged = false;
+    
+    //--- Если текущий тренд BUY
+    if(g_TrendState == TREND_BUY) {
+        //--- Проверяем слом вниз
+        double sellLevel = g_LastPivotPrice - atr;
+        if(bodyBottom < sellLevel) {
+            g_TrendState = TREND_SELL;
+            g_LastPivotPrice = high;
+            g_LastPivotTime = iTime(Symbol(), TrendTimeframe, 1);
+            g_CurrentBuyLevel = g_LastPivotPrice + atr;
+            g_CurrentSellLevel = g_LastPivotPrice - atr;
+            trendChanged = true;
+            
+            Print("Смена тренда: BUY -> SELL, новый пивот = ", g_LastPivotPrice);
+        }
+        //--- Обновляем пивот если новый максимум
+        else if(high > g_LastPivotPrice) {
+            g_LastPivotPrice = high;
+            g_LastPivotTime = iTime(Symbol(), TrendTimeframe, 1);
+            g_CurrentBuyLevel = g_LastPivotPrice + atr;
+            g_CurrentSellLevel = g_LastPivotPrice - atr;
+        }
+    }
+    //--- Если текущий тренд SELL
+    else if(g_TrendState == TREND_SELL) {
+        //--- Проверяем слом вверх
+        double buyLevel = g_LastPivotPrice + atr;
+        if(bodyTop > buyLevel) {
+            g_TrendState = TREND_BUY;
+            g_LastPivotPrice = low;
+            g_LastPivotTime = iTime(Symbol(), TrendTimeframe, 1);
+            g_CurrentBuyLevel = g_LastPivotPrice + atr;
+            g_CurrentSellLevel = g_LastPivotPrice - atr;
+            trendChanged = true;
+            
+            Print("Смена тренда: SELL -> BUY, новый пивот = ", g_LastPivotPrice);
+        }
+        //--- Обновляем пивот если новый минимум
+        else if(low < g_LastPivotPrice) {
+            g_LastPivotPrice = low;
+            g_LastPivotTime = iTime(Symbol(), TrendTimeframe, 1);
+            g_CurrentBuyLevel = g_LastPivotPrice + atr;
+            g_CurrentSellLevel = g_LastPivotPrice - atr;
+        }
+    }
+    
+    //--- Обновляем визуализацию
+    if(ShowVisualObjects && (ShowPivots || ShowATRLevels)) {
+        DrawPivotAndLevels();
+    }
+}
+
+//+------------------------------------------------------------------+
+//| ПРОВЕРКА ИМПУЛЬСНОГО СИГНАЛА                                     |
+//+------------------------------------------------------------------+
+void CheckImpulseSignal() {
+    //--- ДЛЯ ИМПУЛЬСА ПРОВЕРЯЕМ ВСЕ ФИЛЬТРЫ
+    if(!CheckFilters()) return;
+    
+    //--- Проверяем направление торговли
+    bool canBuy = (g_TradeDirection == TRADE_BOTH || g_TradeDirection == TRADE_BUY_ONLY);
+    bool canSell = (g_TradeDirection == TRADE_BOTH || g_TradeDirection == TRADE_SELL_ONLY);
+    
+    //--- Получаем данные последней закрытой свечи
+    double close = iClose(Symbol(), ImpulseTimeframe, 1);
+    double open = iOpen(Symbol(), ImpulseTimeframe, 1);
+    
+    //--- Размер тела свечи
+    double bodySize = MathAbs(close - open);
+    
+    //--- Рассчитываем ATR для импульса
+    double atr = CalculateCustomATR(Symbol(), ImpulseTimeframe, ImpulseATR_Period);
+    double minImpulseSize = atr * (ImpulseMinPercent / 100.0);
+    
+    //--- Проверяем, является ли свеча импульсной
+    if(bodySize < minImpulseSize) return;
+    
+    //--- Определяем направление свечи
+    bool isBullish = (close > open);
+    bool isBearish = (close < open);
+    
+    //--- Проверяем соответствие тренду и возможность открытия
+    if(g_TrendState == TREND_BUY && isBullish && canBuy) {
+        // Проверяем физическое наличие ордеров
+        if(!HasActiveOrders(OP_BUY)) {
+            //--- Проверка задержки после закрытия предыдущей серии
+            if(g_BuySeries.closeTime > 0 && 
+               TimeCurrent() - g_BuySeries.closeTime < PeriodSeconds(ImpulseTimeframe) * MinBarsBetweenSeries) {
+                Print("Слишком рано для новой BUY серии после закрытия предыдущей");
+                return;
+            }
+            Print("💥 Импульсный сигнал BUY! Тело: ", bodySize / Point, "п > ", minImpulseSize / Point, "п");
+            OpenPosition(OP_BUY);
+        }
+    }
+    else if(g_TrendState == TREND_SELL && isBearish && canSell) {
+        // Проверяем физическое наличие ордеров
+        if(!HasActiveOrders(OP_SELL)) {
+            //--- Проверка задержки после закрытия предыдущей серии
+            if(g_SellSeries.closeTime > 0 && 
+               TimeCurrent() - g_SellSeries.closeTime < PeriodSeconds(ImpulseTimeframe) * MinBarsBetweenSeries) {
+                Print("Слишком рано для новой SELL серии после закрытия предыдущей");
+                return;
+            }
+            Print("💥 Импульсный сигнал SELL! Тело: ", bodySize / Point, "п > ", minImpulseSize / Point, "п");
+            OpenPosition(OP_SELL);
+        }
+    }
+}

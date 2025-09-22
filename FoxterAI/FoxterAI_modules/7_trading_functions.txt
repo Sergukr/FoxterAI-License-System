@@ -1,0 +1,328 @@
+//+------------------------------------------------------------------+
+//|                                         7_trading_functions.mqh |
+//|                       Торговые функции для FoxterAI v1.6        |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| ОТКРЫТИЕ ПОЗИЦИИ                                                 |
+//+------------------------------------------------------------------+
+void OpenPosition(int orderType) {
+    //--- Проверка фильтров
+    if(!CheckFilters()) return;
+    
+    //--- Проверка лимитов ордеров
+    if(orderType == OP_BUY && g_BuySeries.count >= g_MaxOrdersBuy) {
+        Print("Достигнут лимит Buy ордеров: ", g_MaxOrdersBuy);
+        return;
+    }
+    if(orderType == OP_SELL && g_SellSeries.count >= g_MaxOrdersSell) {
+        Print("Достигнут лимит Sell ордеров: ", g_MaxOrdersSell);
+        return;
+    }
+    
+    //--- Определяем лот
+    double lot = g_FirstLot;
+    
+    //--- Если это усреднение, применяем классический мартингейл
+    if(orderType == OP_BUY && g_BuySeries.count > 0) {
+        // Классический мартингейл: каждый следующий = FirstLot * коэффициент^(номер усреднения)
+        lot = g_FirstLot * MathPow(g_MartinCoeff, g_BuySeries.count);
+        lot = NormalizeLot(lot);
+        Print("Мартингейл BUY: ордер №", g_BuySeries.count + 1, " = ", g_FirstLot, " * ", g_MartinCoeff, "^", g_BuySeries.count, " = ", lot);
+    }
+    else if(orderType == OP_SELL && g_SellSeries.count > 0) {
+        // Классический мартингейл: каждый следующий = FirstLot * коэффициент^(номер усреднения)
+        lot = g_FirstLot * MathPow(g_MartinCoeff, g_SellSeries.count);
+        lot = NormalizeLot(lot);
+        Print("Мартингейл SELL: ордер №", g_SellSeries.count + 1, " = ", g_FirstLot, " * ", g_MartinCoeff, "^", g_SellSeries.count, " = ", lot);
+    }
+    
+    //--- Нормализация лота
+    lot = NormalizeLot(lot);
+    
+    //--- Подготовка параметров
+    double price = (orderType == OP_BUY) ? Ask : Bid;
+    double sl = 0;
+    double tp = 0;
+    string comment = "FX_" + (orderType == OP_BUY ? "BUY" : "SELL") + "_" + 
+                     IntegerToString((orderType == OP_BUY ? g_BuySeries.count : g_SellSeries.count) + 1);
+    
+    //--- Проверяем, это первый ордер или усреднение
+    bool isFirstOrder = false;
+    if((orderType == OP_BUY && g_BuySeries.count == 0) || 
+       (orderType == OP_SELL && g_SellSeries.count == 0)) {
+        isFirstOrder = true;
+        
+        //--- Сохраняем баланс на момент открытия серии
+        if(orderType == OP_BUY) {
+            g_BuySeries.balanceAtStart = AccountBalance();
+        } else {
+            g_SellSeries.balanceAtStart = AccountBalance();
+        }
+    }
+    
+    //--- Открытие ордера
+    int ticket = OrderSend(Symbol(), orderType, lot, price, Slippage, sl, tp, comment, MagicNumber, 0, 
+                          (orderType == OP_BUY) ? clrBlue : clrRed);
+    
+    if(ticket > 0) {
+        Print("Открыт ордер #", ticket, " ", (orderType == OP_BUY ? "BUY" : "SELL"), 
+              " лот: ", lot, " цена: ", price, " (", comment, ")");
+        
+        //--- КРИТИЧЕСКИ ВАЖНО: Сохраняем данные последнего ордера
+        UpdateLastOrderInfo(orderType, price, lot, ticket);
+        
+        //--- Если это первый ордер в серии, устанавливаем TP
+        if(isFirstOrder) {
+            SetTakeProfit(ticket, orderType);
+        }
+        else {
+            //--- Если это усреднение, НЕ убираем TP, а обновляем на всех ордерах!
+            Print("Усреднение - обновляем общий TP корзины");
+        }
+        
+        //--- Обновляем информацию о сериях
+        UpdateSeriesInfo();
+        
+        //--- ВАЖНО: Обновляем breakeven и targetTP после обновления серий
+        if(orderType == OP_BUY) {
+            g_BuySeries.breakeven = CalculateBreakeven(OP_BUY);
+            g_BuySeries.targetTP = CalculateSeriesTP(OP_BUY);
+        } else {
+            g_SellSeries.breakeven = CalculateBreakeven(OP_SELL);
+            g_SellSeries.targetTP = CalculateSeriesTP(OP_SELL);
+        }
+    }
+    else {
+        Print("Ошибка открытия ордера: ", GetLastError());
+    }
+}
+
+//+------------------------------------------------------------------+
+//| УСТАНОВКА TAKE PROFIT                                            |
+//+------------------------------------------------------------------+
+void SetTakeProfit(int ticket, int orderType) {
+    if(!OrderSelect(ticket, SELECT_BY_TICKET)) return;
+    
+    double tpLevel = 0;
+    double currentPrice = OrderOpenPrice();
+    
+    //--- Выбираем способ расчета TP
+    if(UseDepositPercentTP) {
+        //--- Расчет TP от процента депозита
+        double targetProfit = AccountBalance() * (FirstTPDepositPercent / 100.0);
+        double pointValue = MarketInfo(Symbol(), MODE_TICKVALUE);
+        double tickSize = MarketInfo(Symbol(), MODE_TICKSIZE);
+        
+        //--- Учитываем комиссию и своп если включено
+        if(g_IncludeCommissionSwap) {
+            double estimatedCommission = OrderLots() * g_EstimatedCommissionPerLot;
+            targetProfit += estimatedCommission;
+        }
+        
+        //--- Учитываем проскальзывание
+        double slippageCompensation = targetProfit * (g_SlippagePercent / 100.0);
+        targetProfit += slippageCompensation;
+        
+        if(pointValue > 0 && OrderLots() > 0) {
+            // Правильный расчет пунктов
+            double pointsNeeded = (targetProfit / (OrderLots() * pointValue)) * tickSize / Point;
+            
+            if(orderType == OP_BUY) {
+                tpLevel = currentPrice + pointsNeeded * Point;
+            }
+            else if(orderType == OP_SELL) {
+                tpLevel = currentPrice - pointsNeeded * Point;
+            }
+            
+            Print("TP от депозита: целевая прибыль $", targetProfit, " = ", pointsNeeded, " пунктов");
+        }
+    }
+    else {
+        //--- Расчет TP от ATR (в процентах)
+        double atr = CalculateCustomATR(Symbol(), TP_Timeframe, TP_ATR_Period);
+        double tpDistance = atr * (TP_Percent / 100.0);
+        
+        if(orderType == OP_BUY) {
+            tpLevel = currentPrice + tpDistance;
+        }
+        else if(orderType == OP_SELL) {
+            tpLevel = currentPrice - tpDistance;
+        }
+        
+        Print("TP от ATR: ", TP_Percent, "% от ATR = ", tpDistance / Point, " пунктов");
+    }
+    
+    //--- Модифицируем ордер
+    if(tpLevel > 0) {
+        if(!OrderModify(ticket, OrderOpenPrice(), 0, tpLevel, 0, clrNONE)) {
+            Print("Ошибка установки TP: ", GetLastError());
+        }
+        else {
+            Print("Установлен TP для ордера #", ticket, " на уровне ", tpLevel);
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| РАСЧЕТ УРОВНЯ БЕЗУБЫТКА                                         |
+//+------------------------------------------------------------------+
+double CalculateBreakeven(int orderType) {
+    double totalVolume = 0;
+    double weightedPrice = 0;
+    
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() != orderType) continue;
+        
+        totalVolume += OrderLots();
+        weightedPrice += OrderOpenPrice() * OrderLots();
+    }
+    
+    if(totalVolume == 0) return 0;
+    
+    double breakeven = weightedPrice / totalVolume;
+    
+    //--- Добавляем спред для корректного расчета
+    double spread = MarketInfo(Symbol(), MODE_SPREAD) * Point;
+    if(orderType == OP_BUY) {
+        breakeven += spread;
+    }
+    
+    return NormalizeDouble(breakeven, _Digits);
+}
+
+//+------------------------------------------------------------------+
+//| РАСЧЕТ ЦЕЛЕВОГО TP ДЛЯ СЕРИИ                                    |
+//+------------------------------------------------------------------+
+double CalculateSeriesTP(int orderType) {
+    //--- Определяем параметры серии
+    bool seriesActive = (orderType == OP_BUY) ? g_BuySeries.active : g_SellSeries.active;
+    int seriesCount = (orderType == OP_BUY) ? g_BuySeries.count : g_SellSeries.count;
+    double seriesTotalLot = (orderType == OP_BUY) ? g_BuySeries.totalLot : g_SellSeries.totalLot;
+    double seriesBalanceAtStart = (orderType == OP_BUY) ? g_BuySeries.balanceAtStart : g_SellSeries.balanceAtStart;
+    
+    //--- Если серия не активна
+    if(!seriesActive || seriesCount == 0) return 0;
+    
+    //--- Если только 1 ордер, берем его TP
+    if(seriesCount == 1) {
+        for(int i = 0; i < OrdersTotal(); i++) {
+            if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+            if(OrderSymbol() != Symbol()) continue;
+            if(OrderMagicNumber() != MagicNumber) continue;
+            if(OrderType() != orderType) continue;
+            
+            return OrderTakeProfit();
+        }
+    }
+    
+    //--- Для серии из 2+ ордеров рассчитываем виртуальный TP
+    double breakeven = CalculateBreakeven(orderType);
+    if(breakeven == 0) return 0;
+    
+    //--- Рассчитываем необходимое движение для достижения целевой прибыли
+    double targetProfit = seriesBalanceAtStart * (g_BasketProfitPercent / 100.0);
+    double pointValue = MarketInfo(Symbol(), MODE_TICKVALUE);
+    double tickSize = MarketInfo(Symbol(), MODE_TICKSIZE);
+    
+    //--- Учитываем комиссию и своп если включено
+    if(g_IncludeCommissionSwap) {
+        double currentCommissionSwap = 0;
+        for(int i = 0; i < OrdersTotal(); i++) {
+            if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+            if(OrderSymbol() != Symbol()) continue;
+            if(OrderMagicNumber() != MagicNumber) continue;
+            if(OrderType() != orderType) continue;
+            
+            currentCommissionSwap += OrderSwap() + OrderCommission();
+        }
+        targetProfit -= currentCommissionSwap; // Компенсируем накопленные издержки
+    }
+    
+    //--- Учитываем проскальзывание
+    double slippageCompensation = targetProfit * (g_SlippagePercent / 100.0);
+    targetProfit += slippageCompensation;
+    
+    if(pointValue > 0 && seriesTotalLot > 0) {
+        // Правильный расчет пунктов с учетом всех факторов
+        double pointsNeeded = (targetProfit / (seriesTotalLot * pointValue)) * tickSize / Point;
+        
+        if(orderType == OP_BUY) {
+            return NormalizeDouble(breakeven + pointsNeeded * Point, _Digits);
+        } else {
+            return NormalizeDouble(breakeven - pointsNeeded * Point, _Digits);
+        }
+    }
+    
+    return 0;
+}
+
+//+------------------------------------------------------------------+
+//| ЗАКРЫТИЕ ОРДЕРОВ СЕРИИ                                          |
+//+------------------------------------------------------------------+
+void CloseSeriesOrders(int orderType) {
+    int closed = 0;
+    
+    //--- Сохраняем время закрытия
+    if(orderType == OP_BUY) {
+        g_BuySeries.closeTime = TimeCurrent();
+    } else {
+        g_SellSeries.closeTime = TimeCurrent();
+    }
+    
+    for(int i = OrdersTotal() - 1; i >= 0; i--) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() != orderType) continue;
+        
+        double closePrice = (OrderType() == OP_BUY) ? Bid : Ask;
+        
+        if(OrderClose(OrderTicket(), OrderLots(), closePrice, Slippage, clrYellow)) {
+            closed++;
+        }
+        else {
+            Print("Ошибка закрытия ордера #", OrderTicket(), ": ", GetLastError());
+        }
+    }
+    
+    Print("Закрыто ордеров серии ", (orderType == OP_BUY ? "BUY" : "SELL"), ": ", closed);
+    
+    //--- Обновляем информацию о сериях
+    UpdateSeriesInfo();
+}
+
+//+------------------------------------------------------------------+
+//| ЗАКРЫТИЕ ВСЕХ ОРДЕРОВ                                           |
+//+------------------------------------------------------------------+
+void CloseAllOrders() {
+    int closed = 0;
+    
+    //--- Сохраняем время закрытия для обеих серий
+    g_BuySeries.closeTime = TimeCurrent();
+    g_SellSeries.closeTime = TimeCurrent();
+    
+    for(int i = OrdersTotal() - 1; i >= 0; i--) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
+        
+        double closePrice = (OrderType() == OP_BUY) ? Bid : Ask;
+        
+        if(OrderClose(OrderTicket(), OrderLots(), closePrice, Slippage, clrYellow)) {
+            closed++;
+        }
+        else {
+            Print("Ошибка закрытия ордера #", OrderTicket(), ": ", GetLastError());
+        }
+    }
+    
+    Print("Закрыто всего ордеров: ", closed);
+    
+    //--- Обновляем информацию о сериях
+    UpdateSeriesInfo();
+}

@@ -1,0 +1,208 @@
+//+------------------------------------------------------------------+
+//|                                        11_panel_handlers.mqh |
+//|                 Обработчики событий панели для FoxterAI v1.6    |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| ОБРАБОТКА НАЖАТИЯ КНОПОК                                         |
+//+------------------------------------------------------------------+
+void HandleButtonClick(string buttonName) {
+    //--- Устанавливаем флаг клика на кнопку для блокировки перетаскивания
+    g_ButtonClicked = true;
+    
+    //--- START/STOP
+    if(buttonName == PANEL_PREFIX + "BtnStartStop") {
+        g_BotEnabled = !g_BotEnabled;
+        Print(g_BotEnabled ? "Робот ЗАПУЩЕН" : "Робот ОСТАНОВЛЕН");
+        
+        // Обновляем текст и цвет кнопки сразу
+        ObjectSetString(0, buttonName, OBJPROP_TEXT, g_BotEnabled ? "STOP" : "START");
+        ObjectSetInteger(0, buttonName, OBJPROP_BGCOLOR, g_BotEnabled ? C'198,40,40' : C'46,125,50');
+        
+        SaveSettings();
+        ChartRedraw();
+    }
+    
+    //--- Направление торговли
+    else if(buttonName == PANEL_PREFIX + "BtnBuy") {
+        g_TradeDirection = TRADE_BUY_ONLY;
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBuy", OBJPROP_BGCOLOR, C'46,125,50');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'66,66,66');
+        Print("Направление торговли: только BUY");
+        SaveSettings();
+        ChartRedraw();
+    }
+    else if(buttonName == PANEL_PREFIX + "BtnSell") {
+        g_TradeDirection = TRADE_SELL_ONLY;
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBuy", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'198,40,40');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'66,66,66');
+        Print("Направление торговли: только SELL");
+        SaveSettings();
+        ChartRedraw();
+    }
+    else if(buttonName == PANEL_PREFIX + "BtnBoth") {
+        g_TradeDirection = TRADE_BOTH;
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBuy", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'33,150,243');
+        Print("Направление торговли: обе стороны");
+        SaveSettings();
+        ChartRedraw();
+    }
+    
+    //--- Применение макс ордеров Buy
+    else if(buttonName == PANEL_PREFIX + "BtnApplyMaxBuy") {
+        string value = ObjectGetString(0, PANEL_PREFIX + "EditMaxBuy", OBJPROP_TEXT);
+        int newMax = (int)StringToInteger(value);
+        if(newMax > 0 && newMax <= 100) {
+            g_MaxOrdersBuy = newMax;
+            Print("Макс Buy изменен на: ", g_MaxOrdersBuy);
+            SaveSettings();
+        } else {
+            Print("Некорректное значение макс Buy: ", value);
+            ObjectSetString(0, PANEL_PREFIX + "EditMaxBuy", OBJPROP_TEXT, IntegerToString(g_MaxOrdersBuy));
+        }
+        ChartRedraw();
+    }
+    
+    //--- Применение макс ордеров Sell
+    else if(buttonName == PANEL_PREFIX + "BtnApplyMaxSell") {
+        string value = ObjectGetString(0, PANEL_PREFIX + "EditMaxSell", OBJPROP_TEXT);
+        int newMax = (int)StringToInteger(value);
+        if(newMax > 0 && newMax <= 100) {
+            g_MaxOrdersSell = newMax;
+            Print("Макс Sell изменен на: ", g_MaxOrdersSell);
+            SaveSettings();
+        } else {
+            Print("Некорректное значение макс Sell: ", value);
+            ObjectSetString(0, PANEL_PREFIX + "EditMaxSell", OBJPROP_TEXT, IntegerToString(g_MaxOrdersSell));
+        }
+        ChartRedraw();
+    }
+    
+    //--- Применение профита
+    else if(buttonName == PANEL_PREFIX + "BtnApplyProfit") {
+        string value = ObjectGetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT);
+        double newProfit = StringToDouble(value);
+        if(newProfit > 0 && newProfit <= 10) {
+            g_BasketProfitPercent = newProfit;
+            Print("Профит % изменен на: ", g_BasketProfitPercent);
+            SaveSettings();
+        } else {
+            Print("Некорректное значение профита: ", value);
+            ObjectSetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT, DoubleToString(g_BasketProfitPercent, 2));
+        }
+        ChartRedraw();
+    }
+    
+    //--- Быстрые кнопки профита
+    else if(buttonName == PANEL_PREFIX + "BtnProfit01") {
+        g_BasketProfitPercent = 0.1;
+        ObjectSetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT, "0.10");
+        Print("Профит % изменен на: 0.1");
+        SaveSettings();
+        ChartRedraw();
+    }
+    else if(buttonName == PANEL_PREFIX + "BtnProfit05") {
+        g_BasketProfitPercent = 0.5;
+        ObjectSetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT, "0.50");
+        Print("Профит % изменен на: 0.5");
+        SaveSettings();
+        ChartRedraw();
+    }
+    else if(buttonName == PANEL_PREFIX + "BtnProfit10") {
+        g_BasketProfitPercent = 1.0;
+        ObjectSetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT, "1.00");
+        Print("Профит % изменен на: 1.0");
+        SaveSettings();
+        ChartRedraw();
+    }
+    
+    //--- Тип корзины
+    else if(buttonName == PANEL_PREFIX + "BtnBasketNone") {
+        g_BasketType = BASKET_NONE;
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketNone", OBJPROP_BGCOLOR, C'46,125,50');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'66,66,66');
+        Print("Тип корзины: без объединения");
+        SaveSettings();
+        ChartRedraw();
+    }
+    else if(buttonName == PANEL_PREFIX + "BtnBasketImm") {
+        g_BasketType = BASKET_IMMEDIATE;
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketNone", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'46,125,50');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'66,66,66');
+        Print("Тип корзины: немедленное объединение");
+        SaveSettings();
+        ChartRedraw();
+    }
+    else if(buttonName == PANEL_PREFIX + "BtnBasketAfter") {
+        g_BasketType = BASKET_AFTER_N;
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketNone", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'46,125,50');
+        Print("Тип корзины: после N ордеров");
+        SaveSettings();
+        ChartRedraw();
+    }
+    
+    //--- Применение N для корзины
+    else if(buttonName == PANEL_PREFIX + "BtnApplyBasketN") {
+        string value = ObjectGetString(0, PANEL_PREFIX + "EditBasketN", OBJPROP_TEXT);
+        int newN = (int)StringToInteger(value);
+        if(newN > 0 && newN <= 20) {
+            g_BasketAfterN = newN;
+            Print("Корзина после N изменена на: ", g_BasketAfterN);
+            SaveSettings();
+        } else {
+            Print("Некорректное значение N: ", value);
+            ObjectSetString(0, PANEL_PREFIX + "EditBasketN", OBJPROP_TEXT, IntegerToString(g_BasketAfterN));
+        }
+        ChartRedraw();
+    }
+    
+    //--- Экстренные кнопки
+    else if(buttonName == PANEL_PREFIX + "BtnCloseBuy") {
+        if(g_BuySeries.active && g_BuySeries.count > 0) {
+            Print("ЭКСТРЕННОЕ ЗАКРЫТИЕ BUY ОРДЕРОВ");
+            CloseSeriesOrders(OP_BUY);
+        } else {
+            Print("Нет активных BUY ордеров для закрытия");
+        }
+        ChartRedraw();
+    }
+    else if(buttonName == PANEL_PREFIX + "BtnCloseSell") {
+        if(g_SellSeries.active && g_SellSeries.count > 0) {
+            Print("ЭКСТРЕННОЕ ЗАКРЫТИЕ SELL ОРДЕРОВ");
+            CloseSeriesOrders(OP_SELL);
+        } else {
+            Print("Нет активных SELL ордеров для закрытия");
+        }
+        ChartRedraw();
+    }
+    else if(buttonName == PANEL_PREFIX + "BtnCloseAll") {
+        if(g_BuySeries.active || g_SellSeries.active) {
+            Print("ЭКСТРЕННОЕ ЗАКРЫТИЕ ВСЕХ ОРДЕРОВ");
+            CloseAllOrders();
+        } else {
+            Print("Нет активных ордеров для закрытия");
+        }
+        ChartRedraw();
+    }
+    
+    //--- НЕ сбрасываем состояние обычных кнопок!
+    //--- Только если это действительно необходимо для конкретного типа объекта
+}
+
+//+------------------------------------------------------------------+
+//| ПРОВЕРКА, ЯВЛЯЕТСЯ ЛИ ОБЪЕКТ КНОПКОЙ                           |
+//+------------------------------------------------------------------+
+bool IsButton(string objName) {
+    if(StringFind(objName, PANEL_PREFIX + "Btn") == 0) {
+        return true;
+    }
+    return false;
+}

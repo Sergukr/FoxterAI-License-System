@@ -1,0 +1,240 @@
+//+------------------------------------------------------------------+
+//|                                           12_visualization.mqh |
+//|                         Визуализация для FoxterAI v1.6          |
+//+------------------------------------------------------------------+
+
+//--- Глобальный список объектов для удаления
+string g_VisualObjects[];
+int g_VisualObjectsCount = 0;
+
+//+------------------------------------------------------------------+
+//| ДОБАВЛЕНИЕ ОБЪЕКТА В СПИСОК ДЛЯ ОТСЛЕЖИВАНИЯ                    |
+//+------------------------------------------------------------------+
+void AddVisualObject(string name) {
+    //--- Проверяем, нет ли уже такого объекта
+    for(int i = 0; i < g_VisualObjectsCount; i++) {
+        if(g_VisualObjects[i] == name) return;
+    }
+    
+    //--- Расширяем массив если нужно
+    if(g_VisualObjectsCount >= ArraySize(g_VisualObjects)) {
+        ArrayResize(g_VisualObjects, g_VisualObjectsCount + 10);
+    }
+    
+    //--- Добавляем объект
+    g_VisualObjects[g_VisualObjectsCount] = name;
+    g_VisualObjectsCount++;
+}
+
+//+------------------------------------------------------------------+
+//| ОТРИСОВКА УРОВНЕЙ TP                                            |
+//+------------------------------------------------------------------+
+void DrawTPLevels() {
+    //--- Удаляем старые линии TP
+    ObjectDelete(0, "FX_TP_BUY");
+    ObjectDelete(0, "FX_TP_BUY_Label");
+    ObjectDelete(0, "FX_TP_SELL");
+    ObjectDelete(0, "FX_TP_SELL_Label");
+    ObjectDelete(0, "FX_BE_BUY");
+    ObjectDelete(0, "FX_BE_SELL");
+    
+    // ИСПРАВЛЕНО: Используем текущее время + небольшой отступ вместо далекого будущего
+    datetime rightTime = Time[0] + PeriodSeconds(Period()) * 5;
+    
+    //--- Рисуем TP для Buy серии
+    if(g_BuySeries.active && g_BuySeries.targetTP > 0) {
+        //--- Линия TP
+        string tpBuyName = "FX_TP_BUY";
+        ObjectCreate(0, tpBuyName, OBJ_HLINE, 0, 0, g_BuySeries.targetTP);
+        ObjectSetInteger(0, tpBuyName, OBJPROP_COLOR, TPBuyColor);
+        ObjectSetInteger(0, tpBuyName, OBJPROP_WIDTH, 2);
+        ObjectSetInteger(0, tpBuyName, OBJPROP_STYLE, STYLE_DASH);
+        ObjectSetInteger(0, tpBuyName, OBJPROP_BACK, true);
+        AddVisualObject(tpBuyName);
+        
+        //--- Метка TP
+        string tpText = "TP BUY: " + DoubleToString(g_BuySeries.targetTP, _Digits);
+        if(g_BuySeries.count > 1) {
+            double targetProfit = g_BuySeries.balanceAtStart * (g_BasketProfitPercent / 100.0);
+            tpText += " (Цель: $" + DoubleToString(targetProfit, 2) + ")";
+        }
+        string tpBuyLabel = "FX_TP_BUY_Label";
+        ObjectCreate(0, tpBuyLabel, OBJ_TEXT, 0, rightTime, g_BuySeries.targetTP);
+        ObjectSetString(0, tpBuyLabel, OBJPROP_TEXT, tpText);
+        ObjectSetInteger(0, tpBuyLabel, OBJPROP_COLOR, TPBuyColor);
+        ObjectSetInteger(0, tpBuyLabel, OBJPROP_FONTSIZE, 8);
+        ObjectSetInteger(0, tpBuyLabel, OBJPROP_ANCHOR, ANCHOR_RIGHT_UPPER);
+        AddVisualObject(tpBuyLabel);
+        
+        //--- Линия безубытка (если есть усреднение)
+        if(g_BuySeries.count > 1 && g_BuySeries.breakeven > 0) {
+            string beBuyName = "FX_BE_BUY";
+            ObjectCreate(0, beBuyName, OBJ_HLINE, 0, 0, g_BuySeries.breakeven);
+            ObjectSetInteger(0, beBuyName, OBJPROP_COLOR, clrYellow);
+            ObjectSetInteger(0, beBuyName, OBJPROP_WIDTH, 1);
+            ObjectSetInteger(0, beBuyName, OBJPROP_STYLE, STYLE_DOT);
+            ObjectSetInteger(0, beBuyName, OBJPROP_BACK, true);
+            AddVisualObject(beBuyName);
+        }
+    }
+    
+    //--- Рисуем TP для Sell серии
+    if(g_SellSeries.active && g_SellSeries.targetTP > 0) {
+        //--- Линия TP
+        string tpSellName = "FX_TP_SELL";
+        ObjectCreate(0, tpSellName, OBJ_HLINE, 0, 0, g_SellSeries.targetTP);
+        ObjectSetInteger(0, tpSellName, OBJPROP_COLOR, TPSellColor);
+        ObjectSetInteger(0, tpSellName, OBJPROP_WIDTH, 2);
+        ObjectSetInteger(0, tpSellName, OBJPROP_STYLE, STYLE_DASH);
+        ObjectSetInteger(0, tpSellName, OBJPROP_BACK, true);
+        AddVisualObject(tpSellName);
+        
+        //--- Метка TP
+        string tpText = "TP SELL: " + DoubleToString(g_SellSeries.targetTP, _Digits);
+        if(g_SellSeries.count > 1) {
+            double targetProfit = g_SellSeries.balanceAtStart * (g_BasketProfitPercent / 100.0);
+            tpText += " (Цель: $" + DoubleToString(targetProfit, 2) + ")";
+        }
+        string tpSellLabel = "FX_TP_SELL_Label";
+        ObjectCreate(0, tpSellLabel, OBJ_TEXT, 0, rightTime, g_SellSeries.targetTP);
+        ObjectSetString(0, tpSellLabel, OBJPROP_TEXT, tpText);
+        ObjectSetInteger(0, tpSellLabel, OBJPROP_COLOR, TPSellColor);
+        ObjectSetInteger(0, tpSellLabel, OBJPROP_FONTSIZE, 8);
+        ObjectSetInteger(0, tpSellLabel, OBJPROP_ANCHOR, ANCHOR_RIGHT_LOWER);
+        AddVisualObject(tpSellLabel);
+        
+        //--- Линия безубытка (если есть усреднение)
+        if(g_SellSeries.count > 1 && g_SellSeries.breakeven > 0) {
+            string beSellName = "FX_BE_SELL";
+            ObjectCreate(0, beSellName, OBJ_HLINE, 0, 0, g_SellSeries.breakeven);
+            ObjectSetInteger(0, beSellName, OBJPROP_COLOR, clrYellow);
+            ObjectSetInteger(0, beSellName, OBJPROP_WIDTH, 1);
+            ObjectSetInteger(0, beSellName, OBJPROP_STYLE, STYLE_DOT);
+            ObjectSetInteger(0, beSellName, OBJPROP_BACK, true);
+            AddVisualObject(beSellName);
+        }
+    }
+    
+    ChartRedraw(0);
+}
+
+//+------------------------------------------------------------------+
+//| ОТРИСОВКА ПИВОТА И УРОВНЕЙ                                       |
+//+------------------------------------------------------------------+
+void DrawPivotAndLevels() {
+    //--- Проверяем, нужно ли отображать
+    if(!ShowVisualObjects) return;
+    
+    //--- Удаляем старые объекты пивота и уровней
+    ObjectDelete(0, "FX_Pivot");
+    ObjectDelete(0, "FX_PivotLabel");
+    ObjectDelete(0, "FX_BuyLevel");
+    ObjectDelete(0, "FX_BuyLevelLabel");
+    ObjectDelete(0, "FX_SellLevel");
+    ObjectDelete(0, "FX_SellLevelLabel");
+    
+    //--- Если нет пивота, выходим
+    if(g_LastPivotPrice == 0 || g_LastPivotTime == 0) return;
+    
+    // ИСПРАВЛЕНО: Используем текущее время + небольшой отступ
+    datetime rightTime = Time[0] + PeriodSeconds(TrendTimeframe) * 5;
+    
+    //--- Рисуем пивот
+    if(ShowPivots) {
+        string pivotName = "FX_Pivot";
+        color pivotColor = (g_TrendState == TREND_BUY) ? BuyPivotColor : SellPivotColor;
+        
+        //--- Горизонтальная линия пивота
+        ObjectCreate(0, pivotName, OBJ_TREND, 0, g_LastPivotTime, g_LastPivotPrice, rightTime, g_LastPivotPrice);
+        ObjectSetInteger(0, pivotName, OBJPROP_COLOR, pivotColor);
+        ObjectSetInteger(0, pivotName, OBJPROP_WIDTH, LineWidth);
+        ObjectSetInteger(0, pivotName, OBJPROP_STYLE, STYLE_SOLID);
+        ObjectSetInteger(0, pivotName, OBJPROP_RAY_RIGHT, false);
+        ObjectSetInteger(0, pivotName, OBJPROP_BACK, true);
+        AddVisualObject(pivotName);
+        
+        //--- Метка пивота
+        string pivotLabel = "FX_PivotLabel";
+        ObjectCreate(0, pivotLabel, OBJ_TEXT, 0, g_LastPivotTime, g_LastPivotPrice);
+        ObjectSetString(0, pivotLabel, OBJPROP_TEXT, "PIVOT " + (g_TrendState == TREND_BUY ? "BUY" : "SELL"));
+        ObjectSetInteger(0, pivotLabel, OBJPROP_COLOR, pivotColor);
+        ObjectSetInteger(0, pivotLabel, OBJPROP_FONTSIZE, 8);
+        ObjectSetInteger(0, pivotLabel, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
+        AddVisualObject(pivotLabel);
+    }
+    
+    //--- Рисуем уровни ATR
+    if(ShowATRLevels) {
+        //--- Верхний уровень (для слома на SELL)
+        string buyLevelName = "FX_BuyLevel";
+        ObjectCreate(0, buyLevelName, OBJ_TREND, 0, g_LastPivotTime, g_CurrentBuyLevel, rightTime, g_CurrentBuyLevel);
+        ObjectSetInteger(0, buyLevelName, OBJPROP_COLOR, BuyLevelColor);
+        ObjectSetInteger(0, buyLevelName, OBJPROP_WIDTH, LineWidth - 1);
+        ObjectSetInteger(0, buyLevelName, OBJPROP_STYLE, STYLE_DASH);
+        ObjectSetInteger(0, buyLevelName, OBJPROP_RAY_RIGHT, false);
+        ObjectSetInteger(0, buyLevelName, OBJPROP_BACK, true);
+        AddVisualObject(buyLevelName);
+        
+        //--- Метка верхнего уровня
+        string buyLevelLabel = "FX_BuyLevelLabel";
+        ObjectCreate(0, buyLevelLabel, OBJ_TEXT, 0, g_LastPivotTime, g_CurrentBuyLevel);
+        ObjectSetString(0, buyLevelLabel, OBJPROP_TEXT, "Слом на BUY");
+        ObjectSetInteger(0, buyLevelLabel, OBJPROP_COLOR, BuyLevelColor);
+        ObjectSetInteger(0, buyLevelLabel, OBJPROP_FONTSIZE, 7);
+        ObjectSetInteger(0, buyLevelLabel, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+        AddVisualObject(buyLevelLabel);
+        
+        //--- Нижний уровень (для слома на BUY)
+        string sellLevelName = "FX_SellLevel";
+        ObjectCreate(0, sellLevelName, OBJ_TREND, 0, g_LastPivotTime, g_CurrentSellLevel, rightTime, g_CurrentSellLevel);
+        ObjectSetInteger(0, sellLevelName, OBJPROP_COLOR, SellLevelColor);
+        ObjectSetInteger(0, sellLevelName, OBJPROP_WIDTH, LineWidth - 1);
+        ObjectSetInteger(0, sellLevelName, OBJPROP_STYLE, STYLE_DASH);
+        ObjectSetInteger(0, sellLevelName, OBJPROP_RAY_RIGHT, false);
+        ObjectSetInteger(0, sellLevelName, OBJPROP_BACK, true);
+        AddVisualObject(sellLevelName);
+        
+        //--- Метка нижнего уровня  
+        string sellLevelLabel = "FX_SellLevelLabel";
+        ObjectCreate(0, sellLevelLabel, OBJ_TEXT, 0, g_LastPivotTime, g_CurrentSellLevel);
+        ObjectSetString(0, sellLevelLabel, OBJPROP_TEXT, "Слом на SELL");
+        ObjectSetInteger(0, sellLevelLabel, OBJPROP_COLOR, SellLevelColor);
+        ObjectSetInteger(0, sellLevelLabel, OBJPROP_FONTSIZE, 7);
+        ObjectSetInteger(0, sellLevelLabel, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
+        AddVisualObject(sellLevelLabel);
+    }
+    
+    //--- Обновляем график
+    ChartRedraw(0);
+}
+
+//+------------------------------------------------------------------+
+//| УДАЛЕНИЕ ВИЗУАЛЬНЫХ ОБЪЕКТОВ                                     |
+//+------------------------------------------------------------------+
+void DeleteVisualObjects() {
+    //--- Удаляем все отслеживаемые объекты
+    for(int i = 0; i < g_VisualObjectsCount; i++) {
+        ObjectDelete(0, g_VisualObjects[i]);
+    }
+    
+    //--- Очищаем список
+    g_VisualObjectsCount = 0;
+    ArrayResize(g_VisualObjects, 0);
+    
+    //--- Дополнительно удаляем объекты по маске
+    ObjectDelete(0, "FX_Pivot");
+    ObjectDelete(0, "FX_PivotLabel");
+    ObjectDelete(0, "FX_BuyLevel");
+    ObjectDelete(0, "FX_BuyLevelLabel");
+    ObjectDelete(0, "FX_SellLevel");
+    ObjectDelete(0, "FX_SellLevelLabel");
+    ObjectDelete(0, "FX_TP_BUY");
+    ObjectDelete(0, "FX_TP_BUY_Label");
+    ObjectDelete(0, "FX_TP_SELL");
+    ObjectDelete(0, "FX_TP_SELL_Label");
+    ObjectDelete(0, "FX_BE_BUY");
+    ObjectDelete(0, "FX_BE_SELL");
+    
+    //--- Обновляем график
+    ChartRedraw(0);
+}

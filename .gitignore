@@ -1,0 +1,31 @@
+# Конфиденциальные данные
+config.ini
+*.key
+*.log
+
+# Базы данных
+*.db
+*.sqlite
+licenses.db
+
+# Python (Desktop)
+__pycache__/
+*.py[cod]
+*.pyc
+.Python
+env/
+venv/
+
+# Node.js (Server)
+node_modules/
+npm-debug.log
+.env
+
+# MT4 (Robot)
+*.ex4
+
+# IDE и система
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

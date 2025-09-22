@@ -1,0 +1,7 @@
+# FoxterAI License Manager Desktop - Dependencies
+customtkinter==5.2.0
+requests==2.31.0
+pandas==2.0.3
+openpyxl==3.1.2
+pillow==10.0.0
+pyinstaller==5.13.0

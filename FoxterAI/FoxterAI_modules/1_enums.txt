@@ -1,0 +1,23 @@
+//+------------------------------------------------------------------+
+//|                                                      1_enums.mqh |
+//|                                   Перечисления для FoxterAI v1.6 |
+//+------------------------------------------------------------------+
+
+//--- Перечисления для удобства
+enum ENUM_TREND_STATE {
+    TREND_NONE = 0,   // Тренд не определен
+    TREND_BUY = 1,    // Восходящий тренд
+    TREND_SELL = -1   // Нисходящий тренд
+};
+
+enum ENUM_BASKET_TYPE {
+    BASKET_NONE = 0,        // Без комбинирования
+    BASKET_IMMEDIATE = 1,   // Сразу объединять
+    BASKET_AFTER_N = 2      // После N усреднений
+};
+
+enum ENUM_TRADE_DIRECTION {
+    TRADE_BOTH = 0,   // Обе стороны
+    TRADE_BUY_ONLY = 1,  // Только BUY
+    TRADE_SELL_ONLY = 2  // Только SELL
+};

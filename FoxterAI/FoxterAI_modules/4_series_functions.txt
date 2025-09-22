@@ -1,0 +1,294 @@
+//+------------------------------------------------------------------+
+//|                                          4_series_functions.mqh |
+//|                      Функции работы с сериями для FoxterAI v1.6 |
+//|                            ПРОСТАЯ РАБОЧАЯ ВЕРСИЯ                |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| СБРОС ИНФОРМАЦИИ О СЕРИИ                                         |
+//+------------------------------------------------------------------+
+void ResetSeriesInfo(SeriesInfo &series) {
+    series.count = 0;
+    series.totalLot = 0;
+    series.averagePrice = 0;
+    series.lastPrice = 0;
+    series.lastLot = 0;
+    series.lastTicket = 0;  // ДОБАВЛЕНО для надежности
+    series.firstTime = 0;
+    // closeTime не сбрасываем!
+    series.balanceAtStart = 0;
+    series.breakeven = 0;
+    series.targetTP = 0;
+    series.active = false;
+}
+
+//+------------------------------------------------------------------+
+//| ОБНОВЛЕНИЕ ИНФОРМАЦИИ О СЕРИЯХ - ИСПРАВЛЕННАЯ ВЕРСИЯ            |
+//+------------------------------------------------------------------+
+void UpdateSeriesInfo() {
+    //--- Проверяем, есть ли вообще ордера
+    bool hasBuyOrders = false;
+    bool hasSellOrders = false;
+    
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        
+        if(OrderType() == OP_BUY) hasBuyOrders = true;
+        if(OrderType() == OP_SELL) hasSellOrders = true;
+    }
+    
+    //--- Временно сохраняем важную информацию
+    datetime buyCloseTime = g_BuySeries.closeTime;
+    datetime sellCloseTime = g_SellSeries.closeTime;
+    double buyBalance = g_BuySeries.balanceAtStart;
+    double sellBalance = g_SellSeries.balanceAtStart;
+    
+    //--- Сохраняем ticket последнего ордера для восстановления
+    int savedBuyLastTicket = g_BuySeries.lastTicket;
+    int savedSellLastTicket = g_SellSeries.lastTicket;
+    
+    //--- Сброс счетчиков
+    ResetSeriesInfo(g_BuySeries);
+    ResetSeriesInfo(g_SellSeries);
+    
+    //--- Восстанавливаем сохраненную информацию
+    g_BuySeries.closeTime = buyCloseTime;
+    g_SellSeries.closeTime = sellCloseTime;
+    
+    //--- Переменные для отслеживания последнего ордера
+    int lastBuyTicket = 0;
+    double lastBuyLot = 0;
+    double lastBuyPrice = 0;
+    datetime lastBuyTime = 0;
+    
+    int lastSellTicket = 0;
+    double lastSellLot = 0;
+    double lastSellPrice = 0;
+    datetime lastSellTime = 0;
+    
+    //--- Проходим по всем ордерам
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        
+        if(OrderType() == OP_BUY) {
+            //--- Обновляем статистику серии
+            g_BuySeries.count++;
+            g_BuySeries.totalLot += OrderLots();
+            g_BuySeries.active = true;
+            
+            //--- Расчет средневзвешенной цены
+            if(g_BuySeries.count == 1) {
+                g_BuySeries.averagePrice = OrderOpenPrice();
+                g_BuySeries.firstTime = OrderOpenTime();
+                g_BuySeries.balanceAtStart = buyBalance > 0 ? buyBalance : AccountBalance();
+            } else {
+                double prevWeight = (g_BuySeries.totalLot - OrderLots());
+                g_BuySeries.averagePrice = ((g_BuySeries.averagePrice * prevWeight) + 
+                                           (OrderOpenPrice() * OrderLots())) / g_BuySeries.totalLot;
+                g_BuySeries.balanceAtStart = buyBalance;
+            }
+            
+            //--- Ищем последний ордер по времени
+            if(OrderOpenTime() > lastBuyTime) {
+                lastBuyTicket = OrderTicket();
+                lastBuyLot = OrderLots();
+                lastBuyPrice = OrderOpenPrice();
+                lastBuyTime = OrderOpenTime();
+            }
+        }
+        else if(OrderType() == OP_SELL) {
+            //--- Обновляем статистику серии
+            g_SellSeries.count++;
+            g_SellSeries.totalLot += OrderLots();
+            g_SellSeries.active = true;
+            
+            //--- Расчет средневзвешенной цены
+            if(g_SellSeries.count == 1) {
+                g_SellSeries.averagePrice = OrderOpenPrice();
+                g_SellSeries.firstTime = OrderOpenTime();
+                g_SellSeries.balanceAtStart = sellBalance > 0 ? sellBalance : AccountBalance();
+            } else {
+                double prevWeight = (g_SellSeries.totalLot - OrderLots());
+                g_SellSeries.averagePrice = ((g_SellSeries.averagePrice * prevWeight) + 
+                                            (OrderOpenPrice() * OrderLots())) / g_SellSeries.totalLot;
+                g_SellSeries.balanceAtStart = sellBalance;
+            }
+            
+            //--- Ищем последний ордер по времени
+            if(OrderOpenTime() > lastSellTime) {
+                lastSellTicket = OrderTicket();
+                lastSellLot = OrderLots();
+                lastSellPrice = OrderOpenPrice();
+                lastSellTime = OrderOpenTime();
+            }
+        }
+    }
+    
+    //--- Устанавливаем последние значения для BUY серии
+    if(g_BuySeries.active) {
+        //--- ПРИОРИТЕТ: используем сохраненный ticket если он есть
+        if(savedBuyLastTicket > 0) {
+            // Пытаемся найти ордер по ticket
+            bool found = false;
+            for(int i = 0; i < OrdersTotal(); i++) {
+                if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+                if(OrderTicket() == savedBuyLastTicket) {
+                    g_BuySeries.lastPrice = OrderOpenPrice();
+                    g_BuySeries.lastLot = OrderLots();
+                    g_BuySeries.lastTicket = savedBuyLastTicket;
+                    found = true;
+                    break;
+                }
+            }
+            
+            //--- Если не нашли по ticket, используем найденный по времени
+            if(!found && lastBuyTicket > 0) {
+                g_BuySeries.lastPrice = lastBuyPrice;
+                g_BuySeries.lastLot = lastBuyLot;
+                g_BuySeries.lastTicket = lastBuyTicket;
+            }
+        }
+        else if(lastBuyTicket > 0) {
+            //--- Используем найденный по времени
+            g_BuySeries.lastPrice = lastBuyPrice;
+            g_BuySeries.lastLot = lastBuyLot;
+            g_BuySeries.lastTicket = lastBuyTicket;
+        }
+        
+        //--- НЕ ВЫЗЫВАЕМ функции из файла 7, они будут вызваны позже
+        // g_BuySeries.breakeven = CalculateBreakeven(OP_BUY);
+        // g_BuySeries.targetTP = CalculateSeriesTP(OP_BUY);
+        
+        Print("BUY серия: ", g_BuySeries.count, " ордеров, lastPrice=", 
+              g_BuySeries.lastPrice, " lastLot=", g_BuySeries.lastLot,
+              " lastTicket=", g_BuySeries.lastTicket);
+    }
+    
+    //--- Устанавливаем последние значения для SELL серии
+    if(g_SellSeries.active) {
+        //--- ПРИОРИТЕТ: используем сохраненный ticket если он есть
+        if(savedSellLastTicket > 0) {
+            // Пытаемся найти ордер по ticket
+            bool found = false;
+            for(int i = 0; i < OrdersTotal(); i++) {
+                if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+                if(OrderTicket() == savedSellLastTicket) {
+                    g_SellSeries.lastPrice = OrderOpenPrice();
+                    g_SellSeries.lastLot = OrderLots();
+                    g_SellSeries.lastTicket = savedSellLastTicket;
+                    found = true;
+                    break;
+                }
+            }
+            
+            //--- Если не нашли по ticket, используем найденный по времени
+            if(!found && lastSellTicket > 0) {
+                g_SellSeries.lastPrice = lastSellPrice;
+                g_SellSeries.lastLot = lastSellLot;
+                g_SellSeries.lastTicket = lastSellTicket;
+            }
+        }
+        else if(lastSellTicket > 0) {
+            //--- Используем найденный по времени
+            g_SellSeries.lastPrice = lastSellPrice;
+            g_SellSeries.lastLot = lastSellLot;
+            g_SellSeries.lastTicket = lastSellTicket;
+        }
+        
+        //--- НЕ ВЫЗЫВАЕМ функции из файла 7, они будут вызваны позже
+        // g_SellSeries.breakeven = CalculateBreakeven(OP_SELL);
+        // g_SellSeries.targetTP = CalculateSeriesTP(OP_SELL);
+        
+        Print("SELL серия: ", g_SellSeries.count, " ордеров, lastPrice=", 
+              g_SellSeries.lastPrice, " lastLot=", g_SellSeries.lastLot,
+              " lastTicket=", g_SellSeries.lastTicket);
+    }
+}
+
+//+------------------------------------------------------------------+
+//| ОБНОВЛЕНИЕ ЦЕЛЕВЫХ УРОВНЕЙ ПОСЛЕ ОТКРЫТИЯ ОРДЕРА               |
+//+------------------------------------------------------------------+
+void UpdateSeriesTargets(int orderType) {
+    //--- Эта функция будет вызываться из 7_trading_functions.mqh
+    //--- после открытия ордера для обновления breakeven и targetTP
+    if(orderType == OP_BUY && g_BuySeries.active) {
+        // Функции CalculateBreakeven и CalculateSeriesTP определены в файле 7
+        // g_BuySeries.breakeven = CalculateBreakeven(OP_BUY);
+        // g_BuySeries.targetTP = CalculateSeriesTP(OP_BUY);
+    }
+    else if(orderType == OP_SELL && g_SellSeries.active) {
+        // g_SellSeries.breakeven = CalculateBreakeven(OP_SELL);
+        // g_SellSeries.targetTP = CalculateSeriesTP(OP_SELL);
+    }
+}
+
+//+------------------------------------------------------------------+
+//| ОБНОВЛЕНИЕ ПОСЛЕДНЕГО ОРДЕРА ПОСЛЕ ОТКРЫТИЯ                     |
+//+------------------------------------------------------------------+
+void UpdateLastOrderInfo(int orderType, double price, double lot, int ticket = 0) {
+    //--- Эта функция вызывается сразу после успешного открытия ордера
+    
+    if(orderType == OP_BUY) {
+        g_BuySeries.lastPrice = price;
+        g_BuySeries.lastLot = lot;
+        g_BuySeries.lastTicket = ticket;  // Сохраняем ticket
+        Print("Новый BUY ордер: lastPrice=", price, " lastLot=", lot, " ticket=", ticket);
+    } 
+    else if(orderType == OP_SELL) {
+        g_SellSeries.lastPrice = price;
+        g_SellSeries.lastLot = lot;
+        g_SellSeries.lastTicket = ticket;  // Сохраняем ticket
+        Print("Новый SELL ордер: lastPrice=", price, " lastLot=", lot, " ticket=", ticket);
+    }
+}
+
+//+------------------------------------------------------------------+
+//| РАСЧЕТ ДИСТАНЦИИ ДО СЛЕДУЮЩЕГО УСРЕДНЕНИЯ                      |
+//+------------------------------------------------------------------+
+double GetDistanceToNextGrid(int orderType) {
+    double atr = CalculateCustomATR(Symbol(), Grid_Timeframe, Grid_ATR_Period);
+    double gridStep = atr * (g_GridStepPercent / 100.0);
+    
+    if(orderType == OP_BUY && g_BuySeries.active && g_BuySeries.count > 0) {
+        if(g_BuySeries.lastPrice <= 0) return -1; // Ошибка данных
+        
+        double currentPrice = Ask;
+        double distance = g_BuySeries.lastPrice - currentPrice;
+        double remaining = gridStep - distance;
+        
+        return remaining > 0 ? remaining : 0;
+    }
+    else if(orderType == OP_SELL && g_SellSeries.active && g_SellSeries.count > 0) {
+        if(g_SellSeries.lastPrice <= 0) return -1; // Ошибка данных
+        
+        double currentPrice = Bid;
+        double distance = currentPrice - g_SellSeries.lastPrice;
+        double remaining = gridStep - distance;
+        
+        return remaining > 0 ? remaining : 0;
+    }
+    
+    return 0;
+}
+
+//+------------------------------------------------------------------+
+//| НОРМАЛИЗАЦИЯ ЛОТА                                               |
+//+------------------------------------------------------------------+
+double NormalizeLot(double lot) {
+    double minLot = MarketInfo(Symbol(), MODE_MINLOT);
+    double maxLot = MarketInfo(Symbol(), MODE_MAXLOT);
+    double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
+    
+    //--- Ограничение по минимуму и максимуму
+    if(lot < minLot) lot = minLot;
+    if(lot > maxLot) lot = maxLot;
+    
+    //--- Округление до шага лота
+    lot = MathFloor(lot / lotStep) * lotStep;
+    
+    return NormalizeDouble(lot, 2);
+}

@@ -1,0 +1,77 @@
+//+------------------------------------------------------------------+
+//|                                                     2_inputs.mqh |
+//|                             Входные параметры для FoxterAI v1.6 |
+//+------------------------------------------------------------------+
+
+//--- Параметры определения тренда
+input string            Set1 = "=== НАСТРОЙКИ ТРЕНДА ===";
+input ENUM_TIMEFRAMES   TrendTimeframe = PERIOD_H1;     // Таймфрейм для определения тренда
+input int               TrendATR_Period = 14;           // Период ATR для тренда (N свечей)
+
+//--- Параметры поиска импульса
+input string            Set2 = "=== НАСТРОЙКИ ИМПУЛЬСА ===";
+input bool              UseImpulse = true;              // Использовать импульс для входа
+input ENUM_TIMEFRAMES   ImpulseTimeframe = PERIOD_M15;  // Таймфрейм для поиска импульса
+input int               ImpulseATR_Period = 14;         // Период ATR для импульса
+input double            ImpulseMinPercent = 150;        // Мин. размер импульса (% от ATR)
+
+//--- Параметры торговли
+input string            Set3 = "=== НАСТРОЙКИ ТОРГОВЛИ ===";
+input double            FirstLot = 0.01;                // Начальный лот
+input ENUM_TIMEFRAMES   TP_Timeframe = PERIOD_M15;      // Таймфрейм для расчета TP
+input int               TP_ATR_Period = 14;             // Период ATR для TP
+input double            TP_Percent = 100;               // Размер TP (% от ATR)
+input bool              UseDepositPercentTP = false;    // Использовать % от депозита для первого TP
+input double            FirstTPDepositPercent = 0.5;    // TP первого ордера (% от депозита)
+
+//--- Параметры усреднения
+input string            Set4 = "=== НАСТРОЙКИ УСРЕДНЕНИЯ ===";
+input ENUM_TIMEFRAMES   Grid_Timeframe = PERIOD_M15;    // Таймфрейм для шага сетки
+input int               Grid_ATR_Period = 14;           // Период ATR для шага
+input double            Grid_StepPercent = 50;          // Шаг сетки (% от ATR)
+input double            MartinCoeff = 1.5;              // Коэффициент мартингейла
+input int               MaxOrdersBuy = 10;              // Макс. ордеров Buy
+input int               MaxOrdersSell = 10;             // Макс. ордеров Sell
+
+//--- Параметры комбинированной корзины
+input string            Set5 = "=== КОМБИНИРОВАННАЯ КОРЗИНА ===";
+input ENUM_BASKET_TYPE  BasketType = BASKET_NONE;       // Тип корзины
+input double            BasketProfitPercent = 0.1;      // Целевая прибыль корзины (% от баланса)
+input int               BasketAfterNOrders = 5;         // После скольких усреднений объединять
+
+//--- Параметры учета издержек
+input string            Set5a = "=== УЧЕТ ИЗДЕРЖЕК ===";
+input bool              IncludeCommissionSwap = false;  // Учитывать комиссию и своп в расчетах TP
+input double            EstimatedCommissionPerLot = 7.0; // Примерная комиссия на лот (валюта счета)
+input double            SlippagePercent = 0.1;          // Компенсация проскальзывания (% от профита)
+
+//--- Фильтры
+input string            Set6 = "=== ФИЛЬТРЫ ===";
+input double            MinFreeMarginLevel = 200;       // Мин. уровень свободной маржи (%)
+input int               MaxSpread = 30;                 // Макс. спред (пункты)
+input string            TradeTime1 = "00:00-23:59";     // Окно торговли 1
+input string            TradeTime2 = "";                // Окно торговли 2
+input string            TradeTime3 = "";                // Окно торговли 3
+input int               MinBarsBetweenSeries = 1;       // Мин. баров между сериями
+
+//--- Общие настройки
+input string            Set7 = "=== ОБЩИЕ НАСТРОЙКИ ===";
+input int               MagicNumber = 123456;           // Magic Number
+input int               Slippage = 3;                   // Проскальзывание (пункты)
+input bool              ShowPanel = true;               // Показывать панель
+input int               PanelX = 100;                   // Начальная позиция панели X (КАРДИНАЛЬНО УВЕЛИЧЕНО!)
+input int               PanelY = 50;                    // Начальная позиция панели Y
+
+//--- Визуализация
+input string            Set8 = "=== ВИЗУАЛИЗАЦИЯ ===";
+input bool              ShowVisualObjects = true;       // Показывать визуализацию на графике
+input bool              ShowPivots = true;              // Показывать пивоты
+input bool              ShowATRLevels = true;           // Показывать уровни ATR
+input bool              ShowTPLevels = true;            // Показывать уровни TP
+input color             BuyPivotColor = clrLime;        // Цвет бычьего пивота
+input color             SellPivotColor = clrRed;        // Цвет медвежьего пивота
+input color             BuyLevelColor = clrAqua;        // Цвет уровня для Buy
+input color             SellLevelColor = clrMagenta;    // Цвет уровня для Sell
+input color             TPBuyColor = clrGold;           // Цвет TP для Buy
+input color             TPSellColor = clrOrange;        // Цвет TP для Sell
+input int               LineWidth = 2;                  // Толщина линий

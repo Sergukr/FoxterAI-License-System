@@ -1,0 +1,73 @@
+//+------------------------------------------------------------------+
+//|                                          6_filter_functions.mqh |
+//|                        Функции фильтров для FoxterAI v1.6       |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| ПРОВЕРКА ФИЛЬТРОВ                                                |
+//+------------------------------------------------------------------+
+bool CheckFilters() {
+    //--- Проверка спреда
+    double spread = MarketInfo(Symbol(), MODE_SPREAD);
+    if(spread > MaxSpread) {
+        return false;
+    }
+    
+    //--- Проверка свободной маржи
+    double freeMargin = AccountFreeMargin();
+    double marginLevel = AccountInfoDouble(ACCOUNT_MARGIN_LEVEL);
+    if(marginLevel > 0 && marginLevel < MinFreeMarginLevel) {
+        return false;
+    }
+    
+    //--- Проверка времени торговли
+    if(!IsTradeTimeAllowed()) {
+        return false;
+    }
+    
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| ПРОВЕРКА ВРЕМЕНИ ТОРГОВЛИ                                        |
+//+------------------------------------------------------------------+
+bool IsTradeTimeAllowed() {
+    datetime currentTime = TimeCurrent();
+    int currentHour = TimeHour(currentTime);
+    int currentMinute = TimeMinute(currentTime);
+    int currentTotalMinutes = currentHour * 60 + currentMinute;
+    
+    //--- Проверяем каждое временное окно
+    if(CheckTimeWindow(TradeTime1, currentTotalMinutes)) return true;
+    if(CheckTimeWindow(TradeTime2, currentTotalMinutes)) return true;
+    if(CheckTimeWindow(TradeTime3, currentTotalMinutes)) return true;
+    
+    return false;
+}
+
+//+------------------------------------------------------------------+
+//| ПРОВЕРКА ОДНОГО ВРЕМЕННОГО ОКНА                                  |
+//+------------------------------------------------------------------+
+bool CheckTimeWindow(string timeWindow, int currentMinutes) {
+    if(StringLen(timeWindow) < 11) return false;
+    
+    //--- Парсим время начала и конца
+    string startTime = StringSubstr(timeWindow, 0, 5);
+    string endTime = StringSubstr(timeWindow, 6, 5);
+    
+    int startHour = (int)StringToInteger(StringSubstr(startTime, 0, 2));
+    int startMin = (int)StringToInteger(StringSubstr(startTime, 3, 2));
+    int endHour = (int)StringToInteger(StringSubstr(endTime, 0, 2));
+    int endMin = (int)StringToInteger(StringSubstr(endTime, 3, 2));
+    
+    int startTotalMin = startHour * 60 + startMin;
+    int endTotalMin = endHour * 60 + endMin;
+    
+    //--- Проверяем попадание в окно
+    if(startTotalMin <= endTotalMin) {
+        return (currentMinutes >= startTotalMin && currentMinutes <= endTotalMin);
+    } else {
+        //--- Окно через полночь
+        return (currentMinutes >= startTotalMin || currentMinutes <= endTotalMin);
+    }
+}

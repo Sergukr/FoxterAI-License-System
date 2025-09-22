@@ -1,0 +1,441 @@
+//+------------------------------------------------------------------+
+//|                                           10_panel_update.mqh |
+//|                    Обновление панели для FoxterAI v1.6          |
+//|                        АДАПТИВНАЯ ВЕРСИЯ                         |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| ОБНОВЛЕНИЕ ИНТЕРАКТИВНОЙ ПАНЕЛИ С ДИАГНОСТИКОЙ                  |
+//+------------------------------------------------------------------+
+void UpdateInteractivePanel() {
+    //--- Получаем масштаб DPI
+    double dpiScale = GetDPIScale();
+    
+    //--- Обновление статуса лицензии
+    string licenseText = "Лиц: " + GetLicenseStatusText();
+    color licenseColor = GetLicenseStatusColor();
+    ObjectSetString(0, PANEL_PREFIX + "LicenseStatus", OBJPROP_TEXT, licenseText);
+    ObjectSetInteger(0, PANEL_PREFIX + "LicenseStatus", OBJPROP_COLOR, licenseColor);
+    
+    //--- Обновление информации о тренде
+    string trendText = "Тренд: ";
+    color trendColor;
+    if(g_TrendState == TREND_BUY) {
+        trendText += "BUY ↑";
+        trendColor = C'76,175,80';  // Зеленый
+    } else if(g_TrendState == TREND_SELL) {
+        trendText += "SELL ↓";
+        trendColor = C'244,67,54';  // Красный
+    } else {
+        trendText += "НЕТ";
+        trendColor = C'158,158,158';  // Серый
+    }
+    ObjectSetString(0, PANEL_PREFIX + "TrendInfo", OBJPROP_TEXT, trendText);
+    ObjectSetInteger(0, PANEL_PREFIX + "TrendInfo", OBJPROP_COLOR, trendColor);
+    
+    //--- Обновление статуса (с учетом лицензии)
+    string statusText = g_BotEnabled ? "Активен" : "Остановлен";
+    color statusColor = g_BotEnabled ? C'76,175,80' : C'244,67,54';
+    
+    //--- Если лицензия невалидна, меняем статус
+    if(!IsLicenseValidForTrading()) {
+        statusText = "Заблокирован";
+        statusColor = C'244,67,54';
+    }
+    
+    ObjectSetString(0, PANEL_PREFIX + "Status", OBJPROP_TEXT, statusText);
+    ObjectSetInteger(0, PANEL_PREFIX + "Status", OBJPROP_COLOR, statusColor);
+    
+    //--- Обновление кнопки Start/Stop
+    ObjectSetString(0, PANEL_PREFIX + "BtnStartStop", OBJPROP_TEXT, 
+                   g_BotEnabled ? "STOP" : "START");
+    ObjectSetInteger(0, PANEL_PREFIX + "BtnStartStop", OBJPROP_BGCOLOR, 
+                    g_BotEnabled ? C'198,40,40' : C'46,125,50');
+    
+    //--- ИНФОРМАЦИЯ О BUY СЕРИИ
+    string buyText = FormatSeriesInfo(OP_BUY);
+    color buyColor = GetSeriesColor(OP_BUY);
+    ObjectSetString(0, PANEL_PREFIX + "InfoBuy", OBJPROP_TEXT, buyText);
+    ObjectSetInteger(0, PANEL_PREFIX + "InfoBuy", OBJPROP_COLOR, buyColor);
+    
+    //--- ИНФОРМАЦИЯ О SELL СЕРИИ
+    string sellText = FormatSeriesInfo(OP_SELL);
+    color sellColor = GetSeriesColor(OP_SELL);
+    ObjectSetString(0, PANEL_PREFIX + "InfoSell", OBJPROP_TEXT, sellText);
+    ObjectSetInteger(0, PANEL_PREFIX + "InfoSell", OBJPROP_COLOR, sellColor);
+    
+    //--- Обновление статистики прибыли
+    UpdateProfitStatistics();
+    
+    //--- Обновление информации о счете
+    double balance = AccountBalance();
+    double equity = AccountEquity();
+    string accountText = "Баланс/Эквити: $" + DoubleToString(balance, 2) + 
+                        " / $" + DoubleToString(equity, 2);
+    ObjectSetString(0, PANEL_PREFIX + "AccountInfo", OBJPROP_TEXT, accountText);
+    
+    //--- Обновление просадки
+    double drawdown = 0;
+    double drawdownPercent = 0;
+    if(balance > equity) {
+        drawdown = balance - equity;
+        drawdownPercent = (drawdown / balance) * 100;
+    }
+    
+    string drawdownText = "Просадка: ";
+    if(drawdown > 0) {
+        drawdownText += "$" + DoubleToString(drawdown, 2) + 
+                       " (" + DoubleToString(drawdownPercent, 1) + "%)";
+        ObjectSetInteger(0, PANEL_PREFIX + "DrawdownInfo", OBJPROP_COLOR, C'244,67,54');
+    } else {
+        drawdownText += "$0.00 (0.0%)";
+        ObjectSetInteger(0, PANEL_PREFIX + "DrawdownInfo", OBJPROP_COLOR, C'224,224,224');
+    }
+    ObjectSetString(0, PANEL_PREFIX + "DrawdownInfo", OBJPROP_TEXT, drawdownText);
+}
+
+//+------------------------------------------------------------------+
+//| ФОРМАТИРОВАНИЕ ИНФОРМАЦИИ О СЕРИИ                               |
+//+------------------------------------------------------------------+
+string FormatSeriesInfo(int orderType) {
+    bool isActive = (orderType == OP_BUY) ? g_BuySeries.active : g_SellSeries.active;
+    int count = (orderType == OP_BUY) ? g_BuySeries.count : g_SellSeries.count;
+    double totalLot = (orderType == OP_BUY) ? g_BuySeries.totalLot : g_SellSeries.totalLot;
+    double lastPrice = (orderType == OP_BUY) ? g_BuySeries.lastPrice : g_SellSeries.lastPrice;
+    
+    string prefix = (orderType == OP_BUY) ? "Buy: " : "Sell: ";
+    
+    if(!isActive || count == 0) {
+        return prefix + "нет позиций";
+    }
+    
+    //--- Считаем прибыль серии
+    double seriesProfit = 0;
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() == orderType) {
+            seriesProfit += OrderProfit() + OrderSwap() + OrderCommission();
+        }
+    }
+    
+    //--- Основная информация (компактно)
+    string result = prefix + IntegerToString(count) + " орд";
+    
+    //--- Добавляем лот
+    result += " | " + DoubleToString(totalLot, 2) + " лот";
+    
+    //--- Добавляем прибыль/убыток
+    if(seriesProfit >= 0) {
+        result += " | +$" + DoubleToString(seriesProfit, 2);
+    } else {
+        result += " | -$" + DoubleToString(MathAbs(seriesProfit), 2);
+    }
+    
+    //--- Диагностика lastPrice только если есть проблема
+    if(lastPrice <= 0 && count > 0) {
+        result += " | ERR!";
+    }
+    
+    return result;
+}
+
+//+------------------------------------------------------------------+
+//| ПОЛУЧЕНИЕ ЦВЕТА ДЛЯ СЕРИИ                                       |
+//+------------------------------------------------------------------+
+color GetSeriesColor(int orderType) {
+    bool isActive = (orderType == OP_BUY) ? g_BuySeries.active : g_SellSeries.active;
+    double lastPrice = (orderType == OP_BUY) ? g_BuySeries.lastPrice : g_SellSeries.lastPrice;
+    
+    if(!isActive) {
+        return C'224,224,224'; // Серый для неактивной
+    }
+    
+    if(lastPrice <= 0) {
+        return C'255,152,0'; // Оранжевый при ошибке
+    }
+    
+    //--- Считаем прибыль
+    double profit = 0;
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() == orderType) {
+            profit += OrderProfit() + OrderSwap() + OrderCommission();
+        }
+    }
+    
+    return profit >= 0 ? C'76,175,80' : C'244,67,54';
+}
+
+//+------------------------------------------------------------------+
+//| ОБНОВЛЕНИЕ СТАТИСТИКИ ПРИБЫЛИ                                    |
+//+------------------------------------------------------------------+
+void UpdateProfitStatistics() {
+    //--- Текущее время
+    datetime now = TimeCurrent();
+    MqlDateTime dt;
+    TimeToStruct(now, dt);
+    
+    //--- Начало периодов
+    datetime todayStart = StringToTime(TimeToString(now, TIME_DATE) + " 00:00");
+    datetime yesterdayStart = todayStart - 86400;
+    datetime yesterdayEnd = todayStart - 1;
+    
+    //--- Начало недели (понедельник)
+    int dayOfWeek = dt.day_of_week;
+    if(dayOfWeek == 0) dayOfWeek = 7; // Воскресенье = 7
+    datetime weekStart = todayStart - (dayOfWeek - 1) * 86400;
+    
+    //--- Начало месяца
+    datetime monthStart = StringToTime(IntegerToString(dt.year) + "." + 
+                                      IntegerToString(dt.mon) + ".01 00:00");
+    
+    //--- Считаем прибыль по периодам
+    double profitToday = 0;
+    double profitYesterday = 0;
+    double profitWeek = 0;
+    double profitMonth = 0;
+    
+    //--- Проходим по истории
+    for(int i = OrdersHistoryTotal() - 1; i >= 0; i--) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
+        
+        datetime closeTime = OrderCloseTime();
+        double profit = OrderProfit() + OrderSwap() + OrderCommission();
+        
+        //--- Прибыль за месяц
+        if(closeTime >= monthStart) {
+            profitMonth += profit;
+            
+            //--- Прибыль за неделю
+            if(closeTime >= weekStart) {
+                profitWeek += profit;
+                
+                //--- Прибыль за сегодня
+                if(closeTime >= todayStart) {
+                    profitToday += profit;
+                }
+                //--- Прибыль за вчера
+                else if(closeTime >= yesterdayStart && closeTime <= yesterdayEnd) {
+                    profitYesterday += profit;
+                }
+            }
+        }
+        
+        //--- Не идем слишком далеко в историю
+        if(closeTime < monthStart) break;
+    }
+    
+    //--- Добавляем текущие открытые позиции к сегодняшней прибыли
+    double currentProfit = 0;
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() == OP_BUY || OrderType() == OP_SELL) {
+            currentProfit += OrderProfit() + OrderSwap() + OrderCommission();
+        }
+    }
+    profitToday += currentProfit;
+    profitWeek += currentProfit;
+    profitMonth += currentProfit;
+    
+    //--- Обновляем метки
+    string todayText = "Сегодня: " + FormatProfit(profitToday);
+    ObjectSetString(0, PANEL_PREFIX + "ProfitToday", OBJPROP_TEXT, todayText);
+    ObjectSetInteger(0, PANEL_PREFIX + "ProfitToday", OBJPROP_COLOR, 
+                    profitToday >= 0 ? C'76,175,80' : C'244,67,54');
+    
+    string yesterdayText = "Вчера: " + FormatProfit(profitYesterday);
+    ObjectSetString(0, PANEL_PREFIX + "ProfitYesterday", OBJPROP_TEXT, yesterdayText);
+    ObjectSetInteger(0, PANEL_PREFIX + "ProfitYesterday", OBJPROP_COLOR, 
+                    profitYesterday >= 0 ? C'76,175,80' : C'244,67,54');
+    
+    string weekText = "Неделя: " + FormatProfit(profitWeek);
+    ObjectSetString(0, PANEL_PREFIX + "ProfitWeek", OBJPROP_TEXT, weekText);
+    ObjectSetInteger(0, PANEL_PREFIX + "ProfitWeek", OBJPROP_COLOR, 
+                    profitWeek >= 0 ? C'76,175,80' : C'244,67,54');
+    
+    string monthText = "Месяц: " + FormatProfit(profitMonth);
+    ObjectSetString(0, PANEL_PREFIX + "ProfitMonth", OBJPROP_TEXT, monthText);
+    ObjectSetInteger(0, PANEL_PREFIX + "ProfitMonth", OBJPROP_COLOR, 
+                    profitMonth >= 0 ? C'76,175,80' : C'244,67,54');
+}
+
+//+------------------------------------------------------------------+
+//| ФОРМАТИРОВАНИЕ ПРИБЫЛИ                                           |
+//+------------------------------------------------------------------+
+string FormatProfit(double profit) {
+    if(profit >= 0) {
+        return "+$" + DoubleToString(profit, 2);
+    } else {
+        return "-$" + DoubleToString(MathAbs(profit), 2);
+    }
+}
+
+//+------------------------------------------------------------------+
+//| ПЕРЕМЕЩЕНИЕ ПАНЕЛИ                                               |
+//+------------------------------------------------------------------+
+void MovePanel(int newX, int newY) {
+    int deltaX = newX - g_PanelPosX;
+    int deltaY = newY - g_PanelPosY;
+    
+    g_PanelPosX = newX;
+    g_PanelPosY = newY;
+    
+    //--- Перемещаем все объекты панели
+    for(int i = 0; i < ObjectsTotal(); i++) {
+        string objName = ObjectName(i);
+        if(StringFind(objName, PANEL_PREFIX) == 0) {
+            int objX = (int)ObjectGetInteger(0, objName, OBJPROP_XDISTANCE);
+            int objY = (int)ObjectGetInteger(0, objName, OBJPROP_YDISTANCE);
+            ObjectSetInteger(0, objName, OBJPROP_XDISTANCE, objX + deltaX);
+            ObjectSetInteger(0, objName, OBJPROP_YDISTANCE, objY + deltaY);
+        }
+    }
+    
+    ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| ПРОВЕРКА ПОПАДАНИЯ МЫШИ НА ПАНЕЛЬ                               |
+//+------------------------------------------------------------------+
+bool IsMouseOverPanel(int mouseX, int mouseY) {
+    double dpiScale = GetDPIScale();
+    int panelWidth = (int)(PANEL_WIDTH * dpiScale);
+    int panelHeight = (int)(PANEL_HEIGHT * dpiScale);
+    
+    return (mouseX >= g_PanelPosX && mouseX <= g_PanelPosX + panelWidth &&
+            mouseY >= g_PanelPosY && mouseY <= g_PanelPosY + panelHeight);
+}
+
+//+------------------------------------------------------------------+
+//| ПОЛУЧИТЬ РАССТОЯНИЕ ДО СЛЕДУЮЩЕГО УРОВНЯ                        |
+//+------------------------------------------------------------------+
+double GetPointsToNextLevel(int orderType) {
+    double distance = GetDistanceToNextGrid(orderType);
+    if(distance < 0) return 0; // Ошибка данных
+    return distance / Point;
+}
+
+//+------------------------------------------------------------------+
+//| ОБНОВЛЕНИЕ СТАТИСТИКИ                                            |
+//+------------------------------------------------------------------+
+void UpdateStatistics() {
+    //--- Обновляется автоматически через UpdateProfitStatistics()
+}
+
+//+------------------------------------------------------------------+
+//| ПРОВЕРКА НАЛИЧИЯ НАШИХ ОРДЕРОВ                                  |
+//+------------------------------------------------------------------+
+bool HasOurOrders() {
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() == OP_BUY || OrderType() == OP_SELL) {
+            return true;
+        }
+    }
+    return false;
+}
+
+//+------------------------------------------------------------------+
+//| СОХРАНЕНИЕ НАСТРОЕК                                              |
+//+------------------------------------------------------------------+
+void SaveSettings() {
+    //--- В тестере не сохраняем настройки
+    if(IsTesting() || IsOptimization() || IsVisualMode()) {
+        return;
+    }
+    
+    //--- Проверяем по времени
+    datetime currentTime = TimeCurrent();
+    datetime localTime = TimeLocal();
+    if(MathAbs(currentTime - localTime) > 31536000) {
+        return; // Вероятно тестер
+    }
+    
+    //--- Сохраняем флаг что настройки уже были сохранены
+    GlobalVariableSet("FX_SettingsExist", 1);
+    
+    //--- Сохраняем все настройки
+    GlobalVariableSet("FX_BotEnabled", g_BotEnabled ? 1 : 0);
+    GlobalVariableSet("FX_TradeDirection", g_TradeDirection);
+    GlobalVariableSet("FX_MaxOrdersBuy", g_MaxOrdersBuy);
+    GlobalVariableSet("FX_MaxOrdersSell", g_MaxOrdersSell);
+    GlobalVariableSet("FX_BasketProfitPercent", g_BasketProfitPercent);
+    GlobalVariableSet("FX_BasketType", g_BasketType);
+    GlobalVariableSet("FX_BasketAfterN", g_BasketAfterN);
+    
+    //--- НЕ сохраняем эти параметры - они остаются из входных
+    // FirstLot, MartinCoeff, GridStepPercent, UseImpulse
+}
+
+//+------------------------------------------------------------------+
+//| ЗАГРУЗКА НАСТРОЕК С УМНОЙ ЛОГИКОЙ                               |
+//+------------------------------------------------------------------+
+void LoadSettings() {
+    //--- УМНАЯ ЛОГИКА ВОССТАНОВЛЕНИЯ:
+    //--- 1. Если есть открытые ордера - это восстановление после сбоя
+    if(HasOurOrders()) {
+        Print("ОБНАРУЖЕНЫ ОТКРЫТЫЕ ОРДЕРА - режим восстановления после сбоя!");
+        
+        //--- Загружаем сохраненные настройки если они есть
+        if(GlobalVariableCheck("FX_SettingsExist")) {
+            Print("Загружаем сохраненные настройки для управления существующими ордерами");
+            
+            if(GlobalVariableCheck("FX_BotEnabled"))
+                g_BotEnabled = GlobalVariableGet("FX_BotEnabled") > 0;
+            if(GlobalVariableCheck("FX_TradeDirection"))
+                g_TradeDirection = (ENUM_TRADE_DIRECTION)GlobalVariableGet("FX_TradeDirection");
+            if(GlobalVariableCheck("FX_MaxOrdersBuy"))
+                g_MaxOrdersBuy = (int)GlobalVariableGet("FX_MaxOrdersBuy");
+            if(GlobalVariableCheck("FX_MaxOrdersSell"))
+                g_MaxOrdersSell = (int)GlobalVariableGet("FX_MaxOrdersSell");
+            if(GlobalVariableCheck("FX_BasketProfitPercent"))
+                g_BasketProfitPercent = GlobalVariableGet("FX_BasketProfitPercent");
+            if(GlobalVariableCheck("FX_BasketType"))
+                g_BasketType = (ENUM_BASKET_TYPE)GlobalVariableGet("FX_BasketType");
+            if(GlobalVariableCheck("FX_BasketAfterN"))
+                g_BasketAfterN = (int)GlobalVariableGet("FX_BasketAfterN");
+        }
+        else {
+            Print("ВНИМАНИЕ: Нет сохраненных настроек, используем входные параметры для управления ордерами");
+            g_BotEnabled = true; // Включаем робота при наличии ордеров
+            SaveSettings(); // Сохраняем текущие для будущего
+        }
+    }
+    //--- 2. Нет ордеров - проверяем, первый ли это запуск
+    else if(!GlobalVariableCheck("FX_SettingsExist")) {
+        //--- Первый запуск - используем входные параметры
+        Print("ПЕРВЫЙ ЗАПУСК - используем входные параметры из настроек советника");
+        g_BotEnabled = true; // Робот включен при первом запуске!
+        SaveSettings(); // Сохраняем для будущих запусков
+    }
+    //--- 3. Нет ордеров, но есть сохраненные настройки
+    else {
+        Print("Загружаем сохраненные настройки с панели (обычный перезапуск)");
+        
+        if(GlobalVariableCheck("FX_BotEnabled"))
+            g_BotEnabled = GlobalVariableGet("FX_BotEnabled") > 0;
+        if(GlobalVariableCheck("FX_TradeDirection"))
+            g_TradeDirection = (ENUM_TRADE_DIRECTION)GlobalVariableGet("FX_TradeDirection");
+        if(GlobalVariableCheck("FX_MaxOrdersBuy"))
+            g_MaxOrdersBuy = (int)GlobalVariableGet("FX_MaxOrdersBuy");
+        if(GlobalVariableCheck("FX_MaxOrdersSell"))
+            g_MaxOrdersSell = (int)GlobalVariableGet("FX_MaxOrdersSell");
+        if(GlobalVariableCheck("FX_BasketProfitPercent"))
+            g_BasketProfitPercent = GlobalVariableGet("FX_BasketProfitPercent");
+        if(GlobalVariableCheck("FX_BasketType"))
+            g_BasketType = (ENUM_BASKET_TYPE)GlobalVariableGet("FX_BasketType");
+        if(GlobalVariableCheck("FX_BasketAfterN"))
+            g_BasketAfterN = (int)GlobalVariableGet("FX_BasketAfterN");
+    }
+}
