@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
 //|                                                   13_license.mqh |
-//|                     Модуль лицензирования для FoxterAI v1.6     |
-//|                      ФИНАЛЬНАЯ ВЕРСИЯ БЕЗ ПРЕДУПРЕЖДЕНИЙ        |
+//|                     Модуль лицензирования для FoxterAI v2.0     |
+//|              ПОЛНАЯ ПЕРЕДАЧА ДАННЫХ + 3 ДНЯ АВТОНОМНОЙ РАБОТЫ  |
 //+------------------------------------------------------------------+
 
 #import "wininet.dll"
@@ -34,6 +34,10 @@ int g_FailedChecks = 0;
 bool g_LicenseActivated = false;
 string g_LicenseMessage = "";
 
+//--- КОНСТАНТЫ РОБОТА (реальные данные)
+#define ROBOT_NAME "FoxterAI"           // Реальное название робота
+#define ROBOT_VERSION "1.6"              // Реальная версия робота
+
 //--- ЖЕСТКО ЗАШИТЫЕ НАСТРОЙКИ СЕРВЕРА
 #define LICENSE_SERVER_URL "178.130.43.120"
 #define LICENSE_SERVER_PORT 3000
@@ -44,11 +48,11 @@ string g_LicenseMessage = "";
 #define INTERNET_FLAG_PRAGMA_NOCACHE    256          // 0x00000100  
 #define INTERNET_FLAG_NO_UI             512          // 0x00000200
 
-//--- ОПТИМИЗИРОВАННЫЕ константы времени
+//--- ИЗМЕНЕНО: УМЕНЬШЕНЫ ВРЕМЕННЫЕ ИНТЕРВАЛЫ
 #define LICENSE_CHECK_INTERVAL 86400      // Проверка раз в СУТКИ (24 часа)
 #define LICENSE_HEARTBEAT_INTERVAL 43200  // Heartbeat раз в 12 ЧАСОВ
-#define LICENSE_GRACE_PERIOD_HOURS 72     // 3 ДНЯ работы без связи
-#define MAX_FAILED_CHECKS 10              // 10 неудачных попыток (это 10 дней!)
+#define LICENSE_GRACE_PERIOD_HOURS 72     // 3 ДНЯ работы без связи (ИЗМЕНЕНО С 10!)
+#define MAX_FAILED_CHECKS 3               // 3 неудачных попытки = 3 дня (ИЗМЕНЕНО С 10!)
 #define LICENSE_WARNING_DAYS 7            // Предупреждение за 7 дней до истечения
 
 //+------------------------------------------------------------------+
@@ -59,21 +63,97 @@ bool IsTestMode() {
 }
 
 //+------------------------------------------------------------------+
+//| ОПРЕДЕЛЕНИЕ ТИПА СЧЕТА (ДЕМО/РЕАЛ)                             |
+//+------------------------------------------------------------------+
+string GetAccountType() {
+    if(IsTestMode()) return "Tester";
+    
+    // Способ 1: Проверка через IsDemo()
+    if(IsDemo()) return "Demo";
+    
+    // Способ 2: Дополнительная проверка через название сервера
+    string broker = AccountCompany();
+    string brokerLower = broker;
+    StringToLower(brokerLower);
+    
+    if(StringFind(brokerLower, "demo") >= 0 || 
+       StringFind(brokerLower, "contest") >= 0 ||
+       StringFind(brokerLower, "virtual") >= 0) {
+        return "Demo";
+    }
+    
+    return "Real";
+}
+
+//+------------------------------------------------------------------+
+//| БЕЗОПАСНОЕ ПОЛУЧЕНИЕ ИМЕНИ ВЛАДЕЛЬЦА СЧЕТА - ИСПРАВЛЕНО        |
+//+------------------------------------------------------------------+
+string GetAccountOwnerSafe() {
+    if(IsTestMode()) return "Tester";
+    
+    string owner = AccountName();
+    
+    // Если имя пустое или содержит только пробелы
+    if(StringLen(owner) == 0 || StringTrimLeft(StringTrimRight(owner)) == "") {
+        return "Account_" + IntegerToString(AccountNumber());
+    }
+    
+    // ИСПРАВЛЕНО: Проверяем, не является ли строка набором Unicode-кодов
+    if(StringFind(owner, "[") == 0 && StringFind(owner, "]") > 0) {
+        // Это коды символов - возвращаем номер счета
+        Print("Обнаружены Unicode-коды в имени владельца, используем номер счета");
+        return "Account_" + IntegerToString(AccountNumber());
+    }
+    
+    // Проверяем на наличие только ASCII символов
+    bool hasValidChars = false;
+    string safeOwner = "";
+    
+    for(int i = 0; i < StringLen(owner) && i < 30; i++) {  // Ограничиваем 30 символами
+        ushort charCode = StringGetCharacter(owner, i);
+        
+        // Принимаем только безопасные символы
+        if((charCode >= 'A' && charCode <= 'Z') || 
+           (charCode >= 'a' && charCode <= 'z') ||
+           (charCode >= '0' && charCode <= '9') ||
+           charCode == ' ' || charCode == '.' || charCode == '-' || charCode == '_') {
+            safeOwner = safeOwner + CharToString((uchar)charCode);
+            hasValidChars = true;
+        }
+        else if(charCode > 127) {
+            // Кириллица или другие не-ASCII символы - заменяем на X
+            safeOwner = safeOwner + "X";
+            hasValidChars = true;
+        }
+    }
+    
+    // Если после фильтрации получили валидные символы
+    if(hasValidChars && StringLen(safeOwner) > 0) {
+        string trimmed = StringTrimLeft(StringTrimRight(safeOwner));
+        if(StringLen(trimmed) > 0) {
+            return trimmed;
+        }
+    }
+    
+    // Если ничего не получилось - используем номер счета
+    return "Account_" + IntegerToString(AccountNumber());
+}
+
+//+------------------------------------------------------------------+
 //| ПОЛУЧЕНИЕ ОТПЕЧАТКА СИСТЕМЫ                                      |
 //+------------------------------------------------------------------+
 string GetSystemFingerprint() {
-    //--- В тестере возвращаем фиксированный отпечаток
     if(IsTestMode()) {
         return "TESTER_MODE";
     }
     
-    //--- Создаем уникальный отпечаток на основе данных системы
+    // Создаем отпечаток на основе: счет + робот + версия
     string fingerprint = "";
     fingerprint = fingerprint + IntegerToString(AccountNumber());
-    fingerprint = fingerprint + "_" + AccountCompany();
-    fingerprint = fingerprint + "_MT4_v1.6";
+    fingerprint = fingerprint + "_" + ROBOT_NAME;
+    fingerprint = fingerprint + "_" + ROBOT_VERSION;
     
-    //--- Простое хэширование
+    // Простое хэширование
     int hash = 0;
     for(int i = 0; i < StringLen(fingerprint); i++) {
         hash = hash * 31 + StringGetCharacter(fingerprint, i);
@@ -86,17 +166,13 @@ string GetSystemFingerprint() {
 //| ОТПРАВКА HTTP ЗАПРОСА С ПОЛНОЙ ДИАГНОСТИКОЙ                     |
 //+------------------------------------------------------------------+
 string SendHTTPRequest(string endpoint, string postData) {
-    //--- В ТЕСТЕРЕ НЕ ОТПРАВЛЯЕМ ЗАПРОСЫ!
     if(IsTestMode()) {
-        // Возвращаем успешный ответ для тестера
         return "{\"success\":true,\"message\":\"Test mode\"}";
     }
     
-    string result = "";
-    
     Print("===== ОТПРАВКА HTTP ЗАПРОСА =====");
     Print("URL: http://", LICENSE_SERVER_URL, ":", LICENSE_SERVER_PORT, endpoint);
-    Print("Данные: ", postData);
+    Print("Данные: ", StringLen(postData) > 200 ? StringSubstr(postData, 0, 200) + "..." : postData);
     
     //--- Открываем интернет соединение
     int hInternet = InternetOpenW("FoxterAI/1.6", 1, "", "", 0);
@@ -104,7 +180,6 @@ string SendHTTPRequest(string endpoint, string postData) {
         int error = GetLastError();
         Print("❌ Ошибка InternetOpen: ", error);
         
-        // Пробуем альтернативный User-Agent
         hInternet = InternetOpenW("Mozilla/5.0", 0, "", "", 0);
         if(hInternet == 0) {
             Print("❌ Не удается открыть интернет соединение");
@@ -114,14 +189,14 @@ string SendHTTPRequest(string endpoint, string postData) {
     
     //--- Подключаемся к серверу
     int hConnect = InternetConnectW(hInternet, LICENSE_SERVER_URL, LICENSE_SERVER_PORT, 
-                                   "", "", 3, 0, 0); // 3 = INTERNET_SERVICE_HTTP
+                                   "", "", 3, 0, 0);
     if(hConnect == 0) {
         InternetCloseHandle(hInternet);
         Print("❌ Не удается подключиться к серверу лицензий");
         return "";
     }
     
-    //--- Создаем HTTP запрос с правильными флагами
+    //--- Создаем HTTP запрос
     int flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE | 
                 INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_NO_UI;
     
@@ -140,7 +215,7 @@ string SendHTTPRequest(string endpoint, string postData) {
     ArrayResize(postDataArray, dataLen);
     StringToCharArray(postData, postDataArray, 0, dataLen);
     
-    //--- Отправляем запрос с заголовками
+    //--- Отправляем запрос
     string headers = "Content-Type: application/json\r\nConnection: close\r\n";
     
     if(!HttpSendRequestW(hRequest, headers, StringLen(headers), postDataArray, ArraySize(postDataArray))) {
@@ -185,10 +260,9 @@ string SendHTTPRequest(string endpoint, string postData) {
 }
 
 //+------------------------------------------------------------------+
-//| АКТИВАЦИЯ ЛИЦЕНЗИИ - ПРЯМАЯ ПРОВЕРКА НА СЕРВЕРЕ                |
+//| АКТИВАЦИЯ ЛИЦЕНЗИИ - ПОЛНАЯ ПЕРЕДАЧА ДАННЫХ                    |
 //+------------------------------------------------------------------+
 bool ActivateLicense() {
-    //--- В ТЕСТЕРЕ ВСЕГДА ВАЛИДНА
     if(IsTestMode()) {
         g_LicenseState = LICENSE_VALID;
         g_LicenseActivated = true;
@@ -197,16 +271,32 @@ bool ActivateLicense() {
         return true;
     }
     
-    //--- Подготавливаем данные для отправки
+    //--- НОВОЕ: Собираем ВСЕ данные для активации
+    string accountOwner = GetAccountOwnerSafe();
+    string accountType = GetAccountType();
+    double balance = AccountBalance();
+    
+    //--- Подготавливаем расширенные данные для отправки
     string postData = "{";
     postData = postData + "\"key\":\"" + g_LicenseKey + "\",";
     postData = postData + "\"account\":\"" + IntegerToString(AccountNumber()) + "\",";
+    postData = postData + "\"account_owner\":\"" + accountOwner + "\",";  // НОВОЕ
     postData = postData + "\"broker\":\"" + AccountCompany() + "\",";
+    postData = postData + "\"robot_name\":\"" + ROBOT_NAME + "\",";       // НОВОЕ: реальное название
+    postData = postData + "\"robot_version\":\"" + ROBOT_VERSION + "\","; // НОВОЕ: реальная версия
+    postData = postData + "\"balance\":" + DoubleToString(balance, 2) + ","; // НОВОЕ
+    postData = postData + "\"account_type\":\"" + accountType + "\",";    // НОВОЕ
     postData = postData + "\"fingerprint\":\"" + GetSystemFingerprint() + "\"";
     postData = postData + "}";
     
     Print("=====================================");
-    Print("       АКТИВАЦИЯ ЛИЦЕНЗИИ");
+    Print("       АКТИВАЦИЯ ЛИЦЕНЗИИ v2.0");
+    Print("=====================================");
+    Print("Счет: ", AccountNumber());
+    Print("Владелец: ", accountOwner);
+    Print("Тип: ", accountType);
+    Print("Баланс: ", balance);
+    Print("Робот: ", ROBOT_NAME, " v", ROBOT_VERSION);
     Print("=====================================");
     
     //--- Отправляем запрос
@@ -218,7 +308,7 @@ bool ActivateLicense() {
         return false;
     }
     
-    //--- Парсим ответ (простой парсинг JSON)
+    //--- Парсим ответ
     if(StringFind(response, "\"success\":true") >= 0) {
         Print("✅ Сервер подтвердил активацию");
         
@@ -228,7 +318,6 @@ bool ActivateLicense() {
         g_FailedChecks = 0;
         g_LicenseMessage = "Лицензия активирована успешно";
         
-        // Сохраняем минимум данных для идентификации
         GlobalVariableSet("FX_LastCheck_" + IntegerToString(AccountNumber()), TimeCurrent());
         
         return true;
@@ -245,6 +334,12 @@ bool ActivateLicense() {
         g_LicenseState = LICENSE_INVALID;
         g_LicenseMessage = "Лицензия привязана к другому счету";
         Print("❌ Лицензия привязана к другому счету!");
+        return false;
+    }
+    else if(StringFind(response, "другому роботу") >= 0 || StringFind(response, "wrong_robot") >= 0) {
+        g_LicenseState = LICENSE_INVALID;
+        g_LicenseMessage = "Лицензия привязана к другому роботу";
+        Print("❌ Лицензия привязана к другому роботу!");
         return false;
     }
     else if(StringFind(response, "заблокирована") >= 0 || StringFind(response, "blocked") >= 0) {
@@ -264,10 +359,9 @@ bool ActivateLicense() {
 }
 
 //+------------------------------------------------------------------+
-//| ПРОВЕРКА ЛИЦЕНЗИИ - ВСЕГДА НА СЕРВЕРЕ                           |
+//| ПРОВЕРКА ЛИЦЕНЗИИ - С ПЕРЕДАЧЕЙ РОБОТА                         |
 //+------------------------------------------------------------------+
 bool CheckLicense(bool isInitialCheck = false) {
-    //--- В ТЕСТЕРЕ ВСЕГДА ВАЛИДНА
     if(IsTestMode()) {
         if(g_LicenseState != LICENSE_VALID) {
             g_LicenseState = LICENSE_VALID;
@@ -281,15 +375,13 @@ bool CheckLicense(bool isInitialCheck = false) {
     if(isInitialCheck) {
         Print("🔍 Первичная проверка лицензии...");
         
-        // Всегда пытаемся активировать
         bool result = ActivateLicense();
         g_LastCheckAttempt = TimeCurrent();
         return result;
     }
     
-    //--- Проверяем интервал между проверками (РАЗ В СУТКИ!)
+    //--- Проверяем интервал между проверками
     if(TimeCurrent() - g_LastCheckAttempt < LICENSE_CHECK_INTERVAL) {
-        // Если прошла предыдущая проверка - считаем валидной
         return (g_LicenseState == LICENSE_VALID);
     }
     
@@ -297,11 +389,12 @@ bool CheckLicense(bool isInitialCheck = false) {
     
     Print("📡 Ежедневная проверка лицензии на сервере...");
     
-    //--- Подготавливаем данные для проверки
+    //--- НОВОЕ: Передаем название робота при проверке
     string postData = "{";
     postData = postData + "\"key\":\"" + g_LicenseKey + "\",";
     postData = postData + "\"account\":\"" + IntegerToString(AccountNumber()) + "\",";
     postData = postData + "\"broker\":\"" + AccountCompany() + "\",";
+    postData = postData + "\"robot_name\":\"" + ROBOT_NAME + "\",";       // НОВОЕ
     postData = postData + "\"fingerprint\":\"" + GetSystemFingerprint() + "\"";
     postData = postData + "}";
     
@@ -312,29 +405,28 @@ bool CheckLicense(bool isInitialCheck = false) {
         g_FailedChecks++;
         Print("⚠️ Нет связи с сервером, неудачных проверок: ", g_FailedChecks, " из ", MAX_FAILED_CHECKS);
         
-        // Даем 3 ДНЯ работы без связи
+        // ИЗМЕНЕНО: Даем только 3 ДНЯ работы без связи
         if(g_FailedChecks >= MAX_FAILED_CHECKS) {
             g_LicenseState = LICENSE_NO_CONNECTION;
-            g_LicenseMessage = "Потеряна связь с сервером лицензий более 10 дней";
-            Alert("КРИТИЧНО: Нет связи с сервером лицензий более 10 дней!\nРобот будет остановлен!");
+            g_LicenseMessage = "Потеряна связь с сервером лицензий более 3 дней";
+            Alert("КРИТИЧНО: Нет связи с сервером лицензий более 3 дней!\nРобот будет остановлен!");
             return false;
         }
         
-        // Если у нас была успешная активация - продолжаем работу
-        if(g_LicenseActivated && g_FailedChecks < 5) {
-            // Первые 5 дней просто информируем
-            Print("ℹ️ Работаем в автономном режиме (день ", g_FailedChecks, ")");
-        } else if(g_FailedChecks >= 5) {
-            // После 5 дней начинаем предупреждать
-            Alert("ВНИМАНИЕ: Нет связи с сервером ", g_FailedChecks, " дней!\n",
-                  "Осталось ", MAX_FAILED_CHECKS - g_FailedChecks, " дней до блокировки.");
+        // Предупреждения
+        if(g_LicenseActivated) {
+            if(g_FailedChecks == 1) {
+                Print("ℹ️ Работаем в автономном режиме (день 1 из 3)");
+            } else if(g_FailedChecks == 2) {
+                Alert("ВНИМАНИЕ: Нет связи с сервером 2 дня!\nОсталось 1 день до блокировки!");
+            }
         }
         
         // Временно разрешаем работу
         return (g_LicenseState == LICENSE_VALID || g_LicenseActivated);
     }
     
-    // Сбрасываем счетчик неудачных попыток при успешной связи
+    // Сбрасываем счетчик при успешной связи
     g_FailedChecks = 0;
     
     //--- Парсим ответ
@@ -348,7 +440,7 @@ bool CheckLicense(bool isInitialCheck = false) {
     else if(StringFind(response, "не найден") >= 0 || StringFind(response, "not found") >= 0) {
         g_LicenseState = LICENSE_INVALID;
         g_LicenseMessage = "Лицензия удалена с сервера";
-        Print("❌ Лицензия не найдена на сервере (удалена)!");
+        Print("❌ Лицензия не найдена на сервере!");
         Alert("Лицензия удалена с сервера!\nРобот остановлен.");
         return false;
     }
@@ -372,6 +464,12 @@ bool CheckLicense(bool isInitialCheck = false) {
         Print("❌ Лицензия привязана к другому счету!");
         return false;
     }
+    else if(StringFind(response, "другому роботу") >= 0 || StringFind(response, "wrong_robot") >= 0) {
+        g_LicenseState = LICENSE_INVALID;
+        g_LicenseMessage = "Лицензия привязана к другому роботу";
+        Print("❌ Лицензия привязана к другому роботу!");
+        return false;
+    }
     
     g_LicenseState = LICENSE_INVALID;
     g_LicenseMessage = "Лицензия недействительна";
@@ -380,34 +478,39 @@ bool CheckLicense(bool isInitialCheck = false) {
 }
 
 //+------------------------------------------------------------------+
-//| ОТПРАВКА HEARTBEAT                                               |
+//| ОТПРАВКА HEARTBEAT - РАСШИРЕННАЯ ВЕРСИЯ                        |
 //+------------------------------------------------------------------+
 void SendHeartbeat() {
-    //--- В ТЕСТЕРЕ НЕ ОТПРАВЛЯЕМ
     if(IsTestMode()) return;
     
     static datetime lastHeartbeat = 0;
     
-    //--- Проверяем интервал (12 ЧАСОВ)
     if(TimeCurrent() - lastHeartbeat < LICENSE_HEARTBEAT_INTERVAL) return;
     
-    //--- Не отправляем heartbeat если лицензия невалидна
     if(g_LicenseState != LICENSE_VALID && !g_LicenseActivated) return;
     
     lastHeartbeat = TimeCurrent();
     
-    Print("💓 Отправка heartbeat (раз в 12 часов)...");
+    Print("💓 Отправка heartbeat с расширенными данными...");
     
-    //--- Подготавливаем данные
+    //--- НОВОЕ: Передаем расширенную статистику
+    string accountType = GetAccountType();
+    double balance = AccountBalance();
+    double equity = AccountEquity();
+    double profit = equity - balance;
+    
     string postData = "{";
     postData = postData + "\"key\":\"" + g_LicenseKey + "\",";
-    postData = postData + "\"version\":\"1.6\",";
     postData = postData + "\"account\":\"" + IntegerToString(AccountNumber()) + "\",";
     postData = postData + "\"broker\":\"" + AccountCompany() + "\",";
-    postData = postData + "\"balance\":\"" + DoubleToString(AccountBalance(), 2) + "\"";
+    postData = postData + "\"robot_name\":\"" + ROBOT_NAME + "\",";       // НОВОЕ
+    postData = postData + "\"version\":\"" + ROBOT_VERSION + "\",";       // Версия робота
+    postData = postData + "\"account_type\":\"" + accountType + "\",";    // НОВОЕ: тип счета
+    postData = postData + "\"balance\":" + DoubleToString(balance, 2) + ",";
+    postData = postData + "\"equity\":" + DoubleToString(equity, 2) + ","; // НОВОЕ
+    postData = postData + "\"profit\":" + DoubleToString(profit, 2);      // НОВОЕ
     postData = postData + "}";
     
-    //--- Отправляем без ожидания ответа
     SendHTTPRequest("/heartbeat", postData);
 }
 
@@ -415,10 +518,9 @@ void SendHeartbeat() {
 //| ПРОВЕРКА РАЗРЕШЕНИЯ НА ТОРГОВЛЮ                                 |
 //+------------------------------------------------------------------+
 bool IsLicenseValidForTrading() {
-    //--- В ТЕСТЕРЕ ВСЕГДА РАЗРЕШЕНО
     if(IsTestMode()) return true;
     
-    // Разрешаем торговлю если лицензия валидна ИЛИ была активирована и нет связи менее 10 дней
+    // ИЗМЕНЕНО: Разрешаем работу максимум 3 дня без связи
     return (g_LicenseState == LICENSE_VALID || 
             (g_LicenseActivated && g_FailedChecks < MAX_FAILED_CHECKS));
 }
@@ -427,14 +529,13 @@ bool IsLicenseValidForTrading() {
 //| ПОЛУЧЕНИЕ СТАТУСА ЛИЦЕНЗИИ ДЛЯ ОТОБРАЖЕНИЯ                     |
 //+------------------------------------------------------------------+
 string GetLicenseStatusText() {
-    //--- В ТЕСТЕРЕ
     if(IsTestMode()) {
         return "ТЕСТЕР";
     }
     
     if(g_LicenseState == LICENSE_VALID) {
         if(g_FailedChecks > 0) {
-            return "Автоном " + IntegerToString(g_FailedChecks) + "д";
+            return "Автоном " + IntegerToString(g_FailedChecks) + "/3д";
         }
         return "Активна";
     }
@@ -451,7 +552,7 @@ string GetLicenseStatusText() {
         return "Нет связи";
     }
     else if(g_LicenseActivated && g_FailedChecks > 0) {
-        return "Автоном " + IntegerToString(g_FailedChecks) + "д";
+        return "Автоном " + IntegerToString(g_FailedChecks) + "/3д";
     }
     else {
         return "Не проверена";
@@ -462,7 +563,6 @@ string GetLicenseStatusText() {
 //| ПОЛУЧЕНИЕ ЦВЕТА СТАТУСА                                          |
 //+------------------------------------------------------------------+
 color GetLicenseStatusColor() {
-    //--- В ТЕСТЕРЕ
     if(IsTestMode()) {
         return C'33,150,243';  // Синий для тестера
     }
@@ -470,14 +570,14 @@ color GetLicenseStatusColor() {
     if(g_LicenseState == LICENSE_VALID && g_FailedChecks == 0) {
         return C'76,175,80';  // Зеленый
     }
-    else if(g_FailedChecks > 0 && g_FailedChecks < 5) {
-        return C'255,193,7';  // Желтый - первые 5 дней
+    else if(g_FailedChecks == 1) {
+        return C'255,193,7';  // Желтый - день 1
     }
-    else if(g_FailedChecks >= 5) {
-        return C'255,152,0';  // Оранжевый - критично
+    else if(g_FailedChecks == 2) {
+        return C'255,152,0';  // Оранжевый - день 2
     }
-    else if(g_LicenseState == LICENSE_NO_CONNECTION) {
-        return C'244,67,54';  // Красный
+    else if(g_FailedChecks >= 3 || g_LicenseState == LICENSE_NO_CONNECTION) {
+        return C'244,67,54';  // Красный - критично
     }
     else {
         return C'244,67,54';  // Красный для всех невалидных
@@ -485,60 +585,90 @@ color GetLicenseStatusColor() {
 }
 
 //+------------------------------------------------------------------+
-//| СОХРАНИТЬ КЛЮЧ В ФАЙЛ                                           |
+//| СОХРАНИТЬ КЛЮЧ В ФАЙЛ - ВСЕГДА В FILE_COMMON                   |
 //+------------------------------------------------------------------+
 void SaveLicenseKeyToFile(string key) {
-    //--- В ТЕСТЕРЕ НЕ СОХРАНЯЕМ
     if(IsTestMode()) return;
     
     string filename = "FoxterAI_" + IntegerToString(AccountNumber()) + ".key";
-    int handle = FileOpen(filename, FILE_WRITE | FILE_TXT | FILE_COMMON);
     
-    if(handle == INVALID_HANDLE) {
-        handle = FileOpen(filename, FILE_WRITE | FILE_TXT);
-    }
+    // ВСЕГДА используем FILE_COMMON для доступа между символами
+    int handle = FileOpen(filename, FILE_WRITE | FILE_TXT | FILE_COMMON);
     
     if(handle != INVALID_HANDLE) {
         FileWriteString(handle, key);
         FileClose(handle);
-        Print("Ключ сохранен в файл");
+        Print("✅ Ключ сохранен в общую папку: Terminal/Common/Files/", filename);
+    } else {
+        // Запасной вариант
+        handle = FileOpen(filename, FILE_WRITE | FILE_TXT);
+        if(handle != INVALID_HANDLE) {
+            FileWriteString(handle, key);
+            FileClose(handle);
+            Print("⚠️ Ключ сохранен в локальную папку MQL4/Files/");
+        } else {
+            Print("❌ ОШИБКА: Не удалось сохранить ключ!");
+        }
     }
 }
 
 //+------------------------------------------------------------------+
-//| ПОЛУЧИТЬ СОХРАНЕННЫЙ КЛЮЧ                                       |
+//| ПОЛУЧИТЬ СОХРАНЕННЫЙ КЛЮЧ - ПОДДЕРЖКА ТОЛЬКО UNIV              |
 //+------------------------------------------------------------------+
 string GetSavedLicenseKey() {
-    //--- В ТЕСТЕРЕ ВОЗВРАЩАЕМ ТЕСТОВЫЙ КЛЮЧ
     if(IsTestMode()) {
-        return "FXAI-TEST-MODE-KEY";
+        return "UNIV-TEST-MODE-KEY";
     }
     
     string filename = "FoxterAI_" + IntegerToString(AccountNumber()) + ".key";
-    int handle = FileOpen(filename, FILE_READ | FILE_TXT | FILE_COMMON);
     
-    if(handle == INVALID_HANDLE) {
-        handle = FileOpen(filename, FILE_READ | FILE_TXT);
-    }
+    // Сначала ищем в FILE_COMMON
+    int handle = FileOpen(filename, FILE_READ | FILE_TXT | FILE_COMMON);
     
     if(handle != INVALID_HANDLE) {
         string key = FileReadString(handle);
         FileClose(handle);
         
-        // Очищаем от пробелов
+        // Очищаем от пробелов и невидимых символов
         string cleanKey = "";
         for(int i = 0; i < StringLen(key); i++) {
             ushort charCode = StringGetCharacter(key, i);
-            if(charCode > 32) {
+            if(charCode > 32 && charCode < 127) {
                 cleanKey = cleanKey + CharToString((uchar)charCode);
             }
         }
         
-        if(StringLen(cleanKey) == 19 && StringSubstr(cleanKey, 0, 5) == "FXAI-") {
+        // ИСПРАВЛЕНО: Проверяем только UNIV ключи
+        if(StringLen(cleanKey) >= 10 && StringSubstr(cleanKey, 0, 5) == "UNIV-") {
+            Print("✅ UNIV ключ найден в общей папке: ", cleanKey);
             return cleanKey;
         }
     }
     
+    // Если не нашли в FILE_COMMON, пробуем локальную папку
+    handle = FileOpen(filename, FILE_READ | FILE_TXT);
+    
+    if(handle != INVALID_HANDLE) {
+        string key = FileReadString(handle);
+        FileClose(handle);
+        
+        string cleanKey = "";
+        for(int i = 0; i < StringLen(key); i++) {
+            ushort charCode = StringGetCharacter(key, i);
+            if(charCode > 32 && charCode < 127) {
+                cleanKey = cleanKey + CharToString((uchar)charCode);
+            }
+        }
+        
+        // ИСПРАВЛЕНО: Проверяем только UNIV ключи
+        if(StringLen(cleanKey) >= 10 && StringSubstr(cleanKey, 0, 5) == "UNIV-") {
+            Print("⚠️ UNIV ключ найден в локальной папке, перемещаем в общую...");
+            SaveLicenseKeyToFile(cleanKey);
+            return cleanKey;
+        }
+    }
+    
+    Print("❌ Лицензионный ключ не найден");
     return "";
 }
 
@@ -546,9 +676,8 @@ string GetSavedLicenseKey() {
 //| ИНИЦИАЛИЗАЦИЯ ЛИЦЕНЗИИ                                           |
 //+------------------------------------------------------------------+
 bool InitializeLicense(string licenseKey) {
-    //--- В ТЕСТЕРЕ ВСЕГДА УСПЕШНО
     if(IsTestMode()) {
-        g_LicenseKey = "FXAI-TEST-MODE-KEY";
+        g_LicenseKey = "UNIV-TEST-MODE-KEY";
         g_LicenseState = LICENSE_VALID;
         g_LicenseActivated = true;
         g_LicenseMessage = "Тестовый режим - лицензия не требуется";
@@ -565,11 +694,14 @@ bool InitializeLicense(string licenseKey) {
     g_LicenseKey = licenseKey;
     
     Print("=====================================");
-    Print("    ИНИЦИАЛИЗАЦИЯ ЛИЦЕНЗИИ");
+    Print("    ИНИЦИАЛИЗАЦИЯ ЛИЦЕНЗИИ v2.0");
     Print("=====================================");
     Print("Ключ: ", licenseKey);
     Print("Счет: ", AccountNumber());
+    Print("Владелец: ", GetAccountOwnerSafe());
     Print("Брокер: ", AccountCompany());
+    Print("Тип счета: ", GetAccountType());
+    Print("Робот: ", ROBOT_NAME, " v", ROBOT_VERSION);
     Print("=====================================");
     
     // Сбрасываем состояние
@@ -579,7 +711,7 @@ bool InitializeLicense(string licenseKey) {
     g_FailedChecks = 0;
     
     //--- Проверяем лицензию на сервере
-    bool result = CheckLicense(true); // true = первая проверка
+    bool result = CheckLicense(true);
     
     Print("=====================================");
     Print("Результат инициализации: ", result ? "УСПЕХ" : "ОШИБКА");
@@ -588,6 +720,7 @@ bool InitializeLicense(string licenseKey) {
     } else {
         Print("Следующая проверка через 24 часа");
         Print("Heartbeat будет отправляться каждые 12 часов");
+        Print("Автономная работа: максимум 3 дня");
     }
     Print("=====================================");
     
@@ -598,11 +731,12 @@ bool InitializeLicense(string licenseKey) {
 //| ПОЛНАЯ ОЧИСТКА ДАННЫХ ЛИЦЕНЗИИ                                  |
 //+------------------------------------------------------------------+
 void ClearAllLicenseData() {
-    //--- В ТЕСТЕРЕ НЕ ОЧИЩАЕМ
     if(IsTestMode()) return;
     
-    // Удаляем файл с ключом
     string filename = "FoxterAI_" + IntegerToString(AccountNumber()) + ".key";
+    
+    // Удаляем из обеих локаций
+    FileDelete(filename, FILE_COMMON);
     FileDelete(filename);
     
     // Удаляем глобальные переменные
@@ -619,4 +753,7 @@ void ClearAllLicenseData() {
     g_LicenseMessage = "";
     
     Print("✅ Все данные лицензии очищены");
+    Print("Удалены файлы из:");
+    Print("- Terminal/Common/Files/", filename);
+    Print("- MQL4/Files/", filename);
 }
