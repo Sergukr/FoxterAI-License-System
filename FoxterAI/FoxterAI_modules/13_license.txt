@@ -599,6 +599,18 @@ void SaveLicenseKeyToFile(string key) {
         FileWriteString(handle, key);
         FileClose(handle);
         Print("✅ Ключ сохранен в общую папку: Terminal/Common/Files/", filename);
+        
+        // ДОБАВЛЕНО: Сохраняем ключ в глобальную переменную как резерв
+        GlobalVariableSet("FX_LICENSE_" + IntegerToString(AccountNumber()), StringGetCharacter(key, 0));
+        // Сохраняем длину ключа
+        GlobalVariableSet("FX_LICENSE_LEN_" + IntegerToString(AccountNumber()), StringLen(key));
+        // Сохраняем хэш ключа для проверки
+        int keyHash = 0;
+        for(int i = 0; i < StringLen(key); i++) {
+            keyHash = keyHash * 31 + StringGetCharacter(key, i);
+        }
+        GlobalVariableSet("FX_LICENSE_HASH_" + IntegerToString(AccountNumber()), MathAbs(keyHash));
+        
     } else {
         // Запасной вариант
         handle = FileOpen(filename, FILE_WRITE | FILE_TXT);
@@ -613,62 +625,103 @@ void SaveLicenseKeyToFile(string key) {
 }
 
 //+------------------------------------------------------------------+
-//| ПОЛУЧИТЬ СОХРАНЕННЫЙ КЛЮЧ - ПОДДЕРЖКА ТОЛЬКО UNIV              |
+//| ПОЛУЧИТЬ СОХРАНЕННЫЙ КЛЮЧ - С ПОВТОРНЫМИ ПОПЫТКАМИ              |
 //+------------------------------------------------------------------+
 string GetSavedLicenseKey() {
     if(IsTestMode()) {
         return "UNIV-TEST-MODE-KEY";
     }
     
+    // ДОБАВЛЕНО: Задержка на основе символа для предотвращения гонки
+    int symbolHash = 0;
+    for(int i = 0; i < StringLen(Symbol()); i++) {
+        symbolHash += StringGetCharacter(Symbol(), i);
+    }
+    Sleep((symbolHash % 10) * 100); // Задержка от 0 до 900мс в зависимости от символа
+    
     string filename = "FoxterAI_" + IntegerToString(AccountNumber()) + ".key";
+    string cleanKey = "";
     
-    // Сначала ищем в FILE_COMMON
-    int handle = FileOpen(filename, FILE_READ | FILE_TXT | FILE_COMMON);
-    
-    if(handle != INVALID_HANDLE) {
-        string key = FileReadString(handle);
-        FileClose(handle);
+    // ДОБАВЛЕНО: Попытки чтения файла с повторами
+    for(int attempt = 0; attempt < 3; attempt++) {
+        // Сначала ищем в FILE_COMMON
+        int handle = FileOpen(filename, FILE_READ | FILE_TXT | FILE_COMMON);
         
-        // Очищаем от пробелов и невидимых символов
-        string cleanKey = "";
-        for(int i = 0; i < StringLen(key); i++) {
-            ushort charCode = StringGetCharacter(key, i);
-            if(charCode > 32 && charCode < 127) {
-                cleanKey = cleanKey + CharToString((uchar)charCode);
+        if(handle != INVALID_HANDLE) {
+            string key = FileReadString(handle);
+            FileClose(handle);
+            
+            // Очищаем от пробелов и невидимых символов
+            cleanKey = "";
+            for(int i = 0; i < StringLen(key); i++) {
+                ushort charCode = StringGetCharacter(key, i);
+                if(charCode > 32 && charCode < 127) {
+                    cleanKey = cleanKey + CharToString((uchar)charCode);
+                }
+            }
+            
+            // ИСПРАВЛЕНО: Проверяем только UNIV ключи
+            if(StringLen(cleanKey) >= 10 && StringSubstr(cleanKey, 0, 5) == "UNIV-") {
+                Print("✅ UNIV ключ найден в общей папке (попытка ", attempt + 1, "): ", cleanKey);
+                return cleanKey;
             }
         }
         
-        // ИСПРАВЛЕНО: Проверяем только UNIV ключи
-        if(StringLen(cleanKey) >= 10 && StringSubstr(cleanKey, 0, 5) == "UNIV-") {
-            Print("✅ UNIV ключ найден в общей папке: ", cleanKey);
-            return cleanKey;
-        }
-    }
-    
-    // Если не нашли в FILE_COMMON, пробуем локальную папку
-    handle = FileOpen(filename, FILE_READ | FILE_TXT);
-    
-    if(handle != INVALID_HANDLE) {
-        string key = FileReadString(handle);
-        FileClose(handle);
+        // Если не нашли в FILE_COMMON, пробуем локальную папку
+        handle = FileOpen(filename, FILE_READ | FILE_TXT);
         
-        string cleanKey = "";
-        for(int i = 0; i < StringLen(key); i++) {
-            ushort charCode = StringGetCharacter(key, i);
-            if(charCode > 32 && charCode < 127) {
-                cleanKey = cleanKey + CharToString((uchar)charCode);
+        if(handle != INVALID_HANDLE) {
+            string key = FileReadString(handle);
+            FileClose(handle);
+            
+            cleanKey = "";
+            for(int i = 0; i < StringLen(key); i++) {
+                ushort charCode = StringGetCharacter(key, i);
+                if(charCode > 32 && charCode < 127) {
+                    cleanKey = cleanKey + CharToString((uchar)charCode);
+                }
+            }
+            
+            // ИСПРАВЛЕНО: Проверяем только UNIV ключи
+            if(StringLen(cleanKey) >= 10 && StringSubstr(cleanKey, 0, 5) == "UNIV-") {
+                Print("⚠️ UNIV ключ найден в локальной папке, перемещаем в общую...");
+                SaveLicenseKeyToFile(cleanKey);
+                return cleanKey;
             }
         }
         
-        // ИСПРАВЛЕНО: Проверяем только UNIV ключи
-        if(StringLen(cleanKey) >= 10 && StringSubstr(cleanKey, 0, 5) == "UNIV-") {
-            Print("⚠️ UNIV ключ найден в локальной папке, перемещаем в общую...");
-            SaveLicenseKeyToFile(cleanKey);
-            return cleanKey;
+        // ДОБАВЛЕНО: Если файл не найден, проверяем глобальные переменные
+        if(attempt == 1) {
+            if(GlobalVariableCheck("FX_LICENSE_HASH_" + IntegerToString(AccountNumber()))) {
+                Print("⚠️ Попытка восстановить ключ из глобальных переменных...");
+                
+                // Ждем немного - возможно другой робот сохраняет ключ
+                Sleep(500);
+                
+                // Смотрим сохраненный хэш
+                double savedHash = GlobalVariableGet("FX_LICENSE_HASH_" + IntegerToString(AccountNumber()));
+                double savedLen = GlobalVariableGet("FX_LICENSE_LEN_" + IntegerToString(AccountNumber()));
+                
+                // Если хэш есть, значит ключ был сохранен
+                if(savedHash > 0 && savedLen > 0) {
+                    Print("🔍 Найден хэш ключа в глобальных переменных. Длина ключа: ", (int)savedLen);
+                    Print("⚠️ Ключ был сохранен ранее, но файл временно недоступен");
+                    
+                    // Ждем еще немного и пробуем еще раз
+                    Sleep(1000);
+                    continue; // Переходим к следующей попытке
+                }
+            }
+        }
+        
+        // Ждем перед следующей попыткой
+        if(attempt < 2) {
+            Print("⏳ Попытка ", attempt + 1, " не удалась, ждем перед следующей...");
+            Sleep(500 * (attempt + 1)); // Увеличиваем задержку с каждой попыткой
         }
     }
     
-    Print("❌ Лицензионный ключ не найден");
+    Print("❌ Лицензионный ключ не найден после 3 попыток");
     return "";
 }
 
@@ -702,6 +755,7 @@ bool InitializeLicense(string licenseKey) {
     Print("Брокер: ", AccountCompany());
     Print("Тип счета: ", GetAccountType());
     Print("Робот: ", ROBOT_NAME, " v", ROBOT_VERSION);
+    Print("Пара: ", Symbol()); // ДОБАВЛЕНО: показываем пару
     Print("=====================================");
     
     // Сбрасываем состояние
@@ -741,6 +795,9 @@ void ClearAllLicenseData() {
     
     // Удаляем глобальные переменные
     GlobalVariableDel("FX_LastCheck_" + IntegerToString(AccountNumber()));
+    GlobalVariableDel("FX_LICENSE_" + IntegerToString(AccountNumber()));
+    GlobalVariableDel("FX_LICENSE_LEN_" + IntegerToString(AccountNumber()));
+    GlobalVariableDel("FX_LICENSE_HASH_" + IntegerToString(AccountNumber()));
     
     // Сбрасываем переменные в памяти
     g_LicenseState = LICENSE_UNCHECKED;

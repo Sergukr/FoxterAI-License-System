@@ -69,14 +69,14 @@ void CreateInteractivePanel() {
                        x + marginLeft + (int)(100 * dpiScale), currentY, 
                        licenseColor, fontSize9, dpiScale);
     
-    //--- Тренд в правом углу
+    //--- Тренд в правом углу - БЕЗ СТРЕЛОК
     string trendText = "Тренд: ";
     color trendColor;
     if(g_TrendState == TREND_BUY) {
-        trendText += "BUY ↑";
+        trendText += "BUY";
         trendColor = C'76,175,80';
     } else if(g_TrendState == TREND_SELL) {
-        trendText += "SELL ↓";
+        trendText += "SELL";
         trendColor = C'244,67,54';
     } else {
         trendText += "НЕТ";
@@ -312,7 +312,7 @@ bool CreateAdaptiveButton(string name, string text, int x, int y, int width, int
 }
 
 //+------------------------------------------------------------------+
-//| СОЗДАНИЕ АДАПТИВНОГО ПОЛЯ ВВОДА                                  |
+//| СОЗДАНИЕ АДАПТИВНОГО ПОЛЯ ВВОДА - ИСПРАВЛЕНО                     |
 //+------------------------------------------------------------------+
 bool CreateAdaptiveEdit(string name, string text, int x, int y, int width, int height, double scale) {
     if(ObjectFind(0, name) >= 0) ObjectDelete(0, name);
@@ -331,9 +331,11 @@ bool CreateAdaptiveEdit(string name, string text, int x, int y, int width, int h
     ObjectSetString(0, name, OBJPROP_FONT, "Arial");
     ObjectSetInteger(0, name, OBJPROP_FONTSIZE, (int)(8 * scale));
     ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_CENTER);
-    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);
-    ObjectSetInteger(0, name, OBJPROP_READONLY, false);
-    ObjectSetInteger(0, name, OBJPROP_ZORDER, 1001);
+    
+    // КРИТИЧЕСКИЕ ИЗМЕНЕНИЯ ДЛЯ РАБОТЫ ПОЛЕЙ ВВОДА:
+    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false); // НЕ перетаскиваемый
+    ObjectSetInteger(0, name, OBJPROP_READONLY, false);   // НЕ только для чтения
+    ObjectSetInteger(0, name, OBJPROP_ZORDER, 1002);      // Выше чем кнопки
     
     return true;
 }

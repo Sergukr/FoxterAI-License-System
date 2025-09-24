@@ -21,10 +21,10 @@ void UpdateInteractivePanel() {
     string trendText = "Тренд: ";
     color trendColor;
     if(g_TrendState == TREND_BUY) {
-        trendText += "BUY ↑";
+        trendText += "BUY";
         trendColor = C'76,175,80';  // Зеленый
     } else if(g_TrendState == TREND_SELL) {
-        trendText += "SELL ↓";
+        trendText += "SELL";
         trendColor = C'244,67,54';  // Красный
     } else {
         trendText += "НЕТ";
@@ -232,7 +232,9 @@ void UpdateProfitStatistics() {
         if(closeTime < monthStart) break;
     }
     
-    //--- Добавляем текущие открытые позиции к сегодняшней прибыли
+    //--- НЕ добавляем текущие открытые позиции - только закрытые сделки за период
+    // Закомментировано для правильной статистики:
+    /*
     double currentProfit = 0;
     for(int i = 0; i < OrdersTotal(); i++) {
         if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
@@ -245,6 +247,7 @@ void UpdateProfitStatistics() {
     profitToday += currentProfit;
     profitWeek += currentProfit;
     profitMonth += currentProfit;
+    */
     
     //--- Обновляем метки
     string todayText = "Сегодня: " + FormatProfit(profitToday);
@@ -362,17 +365,20 @@ void SaveSettings() {
         return; // Вероятно тестер
     }
     
+    //--- Создаем уникальный префикс для текущей пары и магика
+    string pairPrefix = "FX_" + Symbol() + "_" + IntegerToString(MagicNumber) + "_";
+    
     //--- Сохраняем флаг что настройки уже были сохранены
-    GlobalVariableSet("FX_SettingsExist", 1);
+    GlobalVariableSet(pairPrefix + "SettingsExist", 1);
     
     //--- Сохраняем все настройки
-    GlobalVariableSet("FX_BotEnabled", g_BotEnabled ? 1 : 0);
-    GlobalVariableSet("FX_TradeDirection", g_TradeDirection);
-    GlobalVariableSet("FX_MaxOrdersBuy", g_MaxOrdersBuy);
-    GlobalVariableSet("FX_MaxOrdersSell", g_MaxOrdersSell);
-    GlobalVariableSet("FX_BasketProfitPercent", g_BasketProfitPercent);
-    GlobalVariableSet("FX_BasketType", g_BasketType);
-    GlobalVariableSet("FX_BasketAfterN", g_BasketAfterN);
+    GlobalVariableSet(pairPrefix + "BotEnabled", g_BotEnabled ? 1 : 0);
+    GlobalVariableSet(pairPrefix + "TradeDirection", g_TradeDirection);
+    GlobalVariableSet(pairPrefix + "MaxOrdersBuy", g_MaxOrdersBuy);
+    GlobalVariableSet(pairPrefix + "MaxOrdersSell", g_MaxOrdersSell);
+    GlobalVariableSet(pairPrefix + "BasketProfitPercent", g_BasketProfitPercent);
+    GlobalVariableSet(pairPrefix + "BasketType", g_BasketType);
+    GlobalVariableSet(pairPrefix + "BasketAfterN", g_BasketAfterN);
     
     //--- НЕ сохраняем эти параметры - они остаются из входных
     // FirstLot, MartinCoeff, GridStepPercent, UseImpulse
@@ -382,60 +388,64 @@ void SaveSettings() {
 //| ЗАГРУЗКА НАСТРОЕК С УМНОЙ ЛОГИКОЙ                               |
 //+------------------------------------------------------------------+
 void LoadSettings() {
+    //--- Создаем уникальный префикс для текущей пары и магика
+    string pairPrefix = "FX_" + Symbol() + "_" + IntegerToString(MagicNumber) + "_";
+    
     //--- УМНАЯ ЛОГИКА ВОССТАНОВЛЕНИЯ:
     //--- 1. Если есть открытые ордера - это восстановление после сбоя
     if(HasOurOrders()) {
         Print("ОБНАРУЖЕНЫ ОТКРЫТЫЕ ОРДЕРА - режим восстановления после сбоя!");
         
         //--- Загружаем сохраненные настройки если они есть
-        if(GlobalVariableCheck("FX_SettingsExist")) {
+        if(GlobalVariableCheck(pairPrefix + "SettingsExist")) {
             Print("Загружаем сохраненные настройки для управления существующими ордерами");
+            Print("Пара: ", Symbol(), ", MagicNumber: ", MagicNumber);
             
-            if(GlobalVariableCheck("FX_BotEnabled"))
-                g_BotEnabled = GlobalVariableGet("FX_BotEnabled") > 0;
-            if(GlobalVariableCheck("FX_TradeDirection"))
-                g_TradeDirection = (ENUM_TRADE_DIRECTION)GlobalVariableGet("FX_TradeDirection");
-            if(GlobalVariableCheck("FX_MaxOrdersBuy"))
-                g_MaxOrdersBuy = (int)GlobalVariableGet("FX_MaxOrdersBuy");
-            if(GlobalVariableCheck("FX_MaxOrdersSell"))
-                g_MaxOrdersSell = (int)GlobalVariableGet("FX_MaxOrdersSell");
-            if(GlobalVariableCheck("FX_BasketProfitPercent"))
-                g_BasketProfitPercent = GlobalVariableGet("FX_BasketProfitPercent");
-            if(GlobalVariableCheck("FX_BasketType"))
-                g_BasketType = (ENUM_BASKET_TYPE)GlobalVariableGet("FX_BasketType");
-            if(GlobalVariableCheck("FX_BasketAfterN"))
-                g_BasketAfterN = (int)GlobalVariableGet("FX_BasketAfterN");
+            if(GlobalVariableCheck(pairPrefix + "BotEnabled"))
+                g_BotEnabled = GlobalVariableGet(pairPrefix + "BotEnabled") > 0;
+            if(GlobalVariableCheck(pairPrefix + "TradeDirection"))
+                g_TradeDirection = (ENUM_TRADE_DIRECTION)GlobalVariableGet(pairPrefix + "TradeDirection");
+            if(GlobalVariableCheck(pairPrefix + "MaxOrdersBuy"))
+                g_MaxOrdersBuy = (int)GlobalVariableGet(pairPrefix + "MaxOrdersBuy");
+            if(GlobalVariableCheck(pairPrefix + "MaxOrdersSell"))
+                g_MaxOrdersSell = (int)GlobalVariableGet(pairPrefix + "MaxOrdersSell");
+            if(GlobalVariableCheck(pairPrefix + "BasketProfitPercent"))
+                g_BasketProfitPercent = GlobalVariableGet(pairPrefix + "BasketProfitPercent");
+            if(GlobalVariableCheck(pairPrefix + "BasketType"))
+                g_BasketType = (ENUM_BASKET_TYPE)GlobalVariableGet(pairPrefix + "BasketType");
+            if(GlobalVariableCheck(pairPrefix + "BasketAfterN"))
+                g_BasketAfterN = (int)GlobalVariableGet(pairPrefix + "BasketAfterN");
         }
         else {
-            Print("ВНИМАНИЕ: Нет сохраненных настроек, используем входные параметры для управления ордерами");
+            Print("ВНИМАНИЕ: Нет сохраненных настроек для пары ", Symbol(), ", используем входные параметры для управления ордерами");
             g_BotEnabled = true; // Включаем робота при наличии ордеров
             SaveSettings(); // Сохраняем текущие для будущего
         }
     }
     //--- 2. Нет ордеров - проверяем, первый ли это запуск
-    else if(!GlobalVariableCheck("FX_SettingsExist")) {
+    else if(!GlobalVariableCheck(pairPrefix + "SettingsExist")) {
         //--- Первый запуск - используем входные параметры
-        Print("ПЕРВЫЙ ЗАПУСК - используем входные параметры из настроек советника");
+        Print("ПЕРВЫЙ ЗАПУСК на паре ", Symbol(), " - используем входные параметры из настроек советника");
         g_BotEnabled = true; // Робот включен при первом запуске!
         SaveSettings(); // Сохраняем для будущих запусков
     }
     //--- 3. Нет ордеров, но есть сохраненные настройки
     else {
-        Print("Загружаем сохраненные настройки с панели (обычный перезапуск)");
+        Print("Загружаем сохраненные настройки с панели для ", Symbol(), " (обычный перезапуск)");
         
-        if(GlobalVariableCheck("FX_BotEnabled"))
-            g_BotEnabled = GlobalVariableGet("FX_BotEnabled") > 0;
-        if(GlobalVariableCheck("FX_TradeDirection"))
-            g_TradeDirection = (ENUM_TRADE_DIRECTION)GlobalVariableGet("FX_TradeDirection");
-        if(GlobalVariableCheck("FX_MaxOrdersBuy"))
-            g_MaxOrdersBuy = (int)GlobalVariableGet("FX_MaxOrdersBuy");
-        if(GlobalVariableCheck("FX_MaxOrdersSell"))
-            g_MaxOrdersSell = (int)GlobalVariableGet("FX_MaxOrdersSell");
-        if(GlobalVariableCheck("FX_BasketProfitPercent"))
-            g_BasketProfitPercent = GlobalVariableGet("FX_BasketProfitPercent");
-        if(GlobalVariableCheck("FX_BasketType"))
-            g_BasketType = (ENUM_BASKET_TYPE)GlobalVariableGet("FX_BasketType");
-        if(GlobalVariableCheck("FX_BasketAfterN"))
-            g_BasketAfterN = (int)GlobalVariableGet("FX_BasketAfterN");
+        if(GlobalVariableCheck(pairPrefix + "BotEnabled"))
+            g_BotEnabled = GlobalVariableGet(pairPrefix + "BotEnabled") > 0;
+        if(GlobalVariableCheck(pairPrefix + "TradeDirection"))
+            g_TradeDirection = (ENUM_TRADE_DIRECTION)GlobalVariableGet(pairPrefix + "TradeDirection");
+        if(GlobalVariableCheck(pairPrefix + "MaxOrdersBuy"))
+            g_MaxOrdersBuy = (int)GlobalVariableGet(pairPrefix + "MaxOrdersBuy");
+        if(GlobalVariableCheck(pairPrefix + "MaxOrdersSell"))
+            g_MaxOrdersSell = (int)GlobalVariableGet(pairPrefix + "MaxOrdersSell");
+        if(GlobalVariableCheck(pairPrefix + "BasketProfitPercent"))
+            g_BasketProfitPercent = GlobalVariableGet(pairPrefix + "BasketProfitPercent");
+        if(GlobalVariableCheck(pairPrefix + "BasketType"))
+            g_BasketType = (ENUM_BASKET_TYPE)GlobalVariableGet(pairPrefix + "BasketType");
+        if(GlobalVariableCheck(pairPrefix + "BasketAfterN"))
+            g_BasketAfterN = (int)GlobalVariableGet(pairPrefix + "BasketAfterN");
     }
 }
