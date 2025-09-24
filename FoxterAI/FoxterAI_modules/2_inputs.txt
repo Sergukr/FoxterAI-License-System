@@ -56,6 +56,8 @@ input int               MinBarsBetweenSeries = 1;       // Мин. баров м
 
 //--- Общие настройки
 input string            Set7 = "=== ОБЩИЕ НАСТРОЙКИ ===";
+input bool              EnableTrading = true;           // Автоматически включить робота (НОВОЕ!)
+input ENUM_TRADE_DIRECTION TradeDirection = TRADE_BOTH; // Направление торговли (НОВОЕ!)
 input int               MagicNumber = 123456;           // Magic Number
 input int               Slippage = 3;                   // Проскальзывание (пункты)
 input bool              ShowPanel = true;               // Показывать панель

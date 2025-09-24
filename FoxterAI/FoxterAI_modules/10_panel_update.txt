@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
-//|                                           10_panel_update.mqh |
+//|                                           10_panel_update.mqh   |
 //|                    Обновление панели для FoxterAI v1.6          |
-//|                        АДАПТИВНАЯ ВЕРСИЯ                         |
+//|                        ИСПРАВЛЕННАЯ ВЕРСИЯ БЕЗ ДУБЛИКАТОВ       |
 //+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
@@ -58,11 +58,31 @@ void UpdateInteractivePanel() {
     ObjectSetString(0, PANEL_PREFIX + "InfoBuy", OBJPROP_TEXT, buyText);
     ObjectSetInteger(0, PANEL_PREFIX + "InfoBuy", OBJPROP_COLOR, buyColor);
     
+    //--- ТП Buy серии в деньгах (НОВАЯ СТРОКА!)
+    if(g_BuySeries.active && g_BuySeries.count > 0) {
+        string buyTPText = "Цель Buy: " + FormatTargetProfit(OP_BUY);
+        color buyTPColor = C'76,175,80';  // Зеленый для целевого TP
+        ObjectSetString(0, PANEL_PREFIX + "InfoBuyTP", OBJPROP_TEXT, buyTPText);
+        ObjectSetInteger(0, PANEL_PREFIX + "InfoBuyTP", OBJPROP_COLOR, buyTPColor);
+    } else {
+        ObjectSetString(0, PANEL_PREFIX + "InfoBuyTP", OBJPROP_TEXT, "");
+    }
+    
     //--- ИНФОРМАЦИЯ О SELL СЕРИИ
     string sellText = FormatSeriesInfo(OP_SELL);
     color sellColor = GetSeriesColor(OP_SELL);
     ObjectSetString(0, PANEL_PREFIX + "InfoSell", OBJPROP_TEXT, sellText);
     ObjectSetInteger(0, PANEL_PREFIX + "InfoSell", OBJPROP_COLOR, sellColor);
+    
+    //--- ТП Sell серии в деньгах (НОВАЯ СТРОКА!)
+    if(g_SellSeries.active && g_SellSeries.count > 0) {
+        string sellTPText = "Цель Sell: " + FormatTargetProfit(OP_SELL);
+        color sellTPColor = C'244,67,54';  // Красный для целевого TP
+        ObjectSetString(0, PANEL_PREFIX + "InfoSellTP", OBJPROP_TEXT, sellTPText);
+        ObjectSetInteger(0, PANEL_PREFIX + "InfoSellTP", OBJPROP_COLOR, sellTPColor);
+    } else {
+        ObjectSetString(0, PANEL_PREFIX + "InfoSellTP", OBJPROP_TEXT, "");
+    }
     
     //--- Обновление статистики прибыли
     UpdateProfitStatistics();
@@ -142,7 +162,41 @@ string FormatSeriesInfo(int orderType) {
 }
 
 //+------------------------------------------------------------------+
-//| ПОЛУЧЕНИЕ ЦВЕТА ДЛЯ СЕРИИ                                       |
+//| ФОРМАТИРОВАНИЕ ЦЕЛЕВОЙ ПРИБЫЛИ - НОВАЯ ФУНКЦИЯ                  |
+//+------------------------------------------------------------------+
+string FormatTargetProfit(int orderType) {
+    double balanceAtStart = (orderType == OP_BUY) ? 
+                            g_BuySeries.balanceAtStart : 
+                            g_SellSeries.balanceAtStart;
+    
+    //--- Рассчитываем целевую прибыль
+    double targetProfit = balanceAtStart * (g_BasketProfitPercent / 100.0);
+    
+    //--- Рассчитываем текущую прибыль серии
+    double currentProfit = 0;
+    for(int i = 0; i < OrdersTotal(); i++) {
+        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+        if(OrderSymbol() != Symbol()) continue;
+        if(OrderMagicNumber() != MagicNumber) continue;
+        if(OrderType() != orderType) continue;
+        
+        currentProfit += OrderProfit() + OrderSwap() + OrderCommission();
+    }
+    
+    //--- Возвращаем форматированную строку
+    string result = "$" + DoubleToString(targetProfit, 2);
+    
+    //--- Добавляем процент достижения цели
+    if(targetProfit > 0) {
+        double progress = (currentProfit / targetProfit) * 100;
+        result += " (" + DoubleToString(progress, 0) + "%)";
+    }
+    
+    return result;
+}
+
+//+------------------------------------------------------------------+
+//| ПОЛУЧЕНИЕ ЦВЕТА СЕРИИ                                            |
 //+------------------------------------------------------------------+
 color GetSeriesColor(int orderType) {
     bool isActive = (orderType == OP_BUY) ? g_BuySeries.active : g_SellSeries.active;
@@ -232,23 +286,6 @@ void UpdateProfitStatistics() {
         if(closeTime < monthStart) break;
     }
     
-    //--- НЕ добавляем текущие открытые позиции - только закрытые сделки за период
-    // Закомментировано для правильной статистики:
-    /*
-    double currentProfit = 0;
-    for(int i = 0; i < OrdersTotal(); i++) {
-        if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
-        if(OrderSymbol() != Symbol()) continue;
-        if(OrderMagicNumber() != MagicNumber) continue;
-        if(OrderType() == OP_BUY || OrderType() == OP_SELL) {
-            currentProfit += OrderProfit() + OrderSwap() + OrderCommission();
-        }
-    }
-    profitToday += currentProfit;
-    profitWeek += currentProfit;
-    profitMonth += currentProfit;
-    */
-    
     //--- Обновляем метки
     string todayText = "Сегодня: " + FormatProfit(profitToday);
     ObjectSetString(0, PANEL_PREFIX + "ProfitToday", OBJPROP_TEXT, todayText);
@@ -322,6 +359,7 @@ bool IsMouseOverPanel(int mouseX, int mouseY) {
 //| ПОЛУЧИТЬ РАССТОЯНИЕ ДО СЛЕДУЮЩЕГО УРОВНЯ                        |
 //+------------------------------------------------------------------+
 double GetPointsToNextLevel(int orderType) {
+    // ВАЖНО: Вызываем функцию из 4_series_functions.mqh, а не дублируем её здесь!
     double distance = GetDistanceToNextGrid(orderType);
     if(distance < 0) return 0; // Ошибка данных
     return distance / Point;
@@ -353,12 +391,13 @@ bool HasOurOrders() {
 //| СОХРАНЕНИЕ НАСТРОЕК                                              |
 //+------------------------------------------------------------------+
 void SaveSettings() {
-    //--- В тестере не сохраняем настройки
+    //--- В ТЕСТЕРЕ НЕ СОХРАНЯЕМ НАСТРОЙКИ - ИСПОЛЬЗУЕМ ТОЛЬКО ВХОДНЫЕ ПАРАМЕТРЫ
     if(IsTesting() || IsOptimization() || IsVisualMode()) {
+        Print("Работа в тестере - настройки не сохраняются, используются входные параметры");
         return;
     }
     
-    //--- Проверяем по времени
+    //--- Дополнительная проверка по времени (на случай если функции выше не сработали)
     datetime currentTime = TimeCurrent();
     datetime localTime = TimeLocal();
     if(MathAbs(currentTime - localTime) > 31536000) {
@@ -388,10 +427,32 @@ void SaveSettings() {
 //| ЗАГРУЗКА НАСТРОЕК С УМНОЙ ЛОГИКОЙ                               |
 //+------------------------------------------------------------------+
 void LoadSettings() {
-    //--- Создаем уникальный префикс для текущей пары и магика
+    //--- В ТЕСТЕРЕ ВСЕГДА ИСПОЛЬЗУЕМ ВХОДНЫЕ ПАРАМЕТРЫ
+    if(IsTesting() || IsOptimization() || IsVisualMode()) {
+        Print("РАБОТА В ТЕСТЕРЕ - используются только входные параметры советника");
+        // Берем настройки из входных параметров (они уже загружены в глобальные переменные)
+        // g_BotEnabled уже установлен из EnableTrading
+        // g_TradeDirection уже установлен из TradeDirection
+        // g_MaxOrdersBuy уже установлен из MaxOrdersBuy
+        // g_MaxOrdersSell уже установлен из MaxOrdersSell
+        // g_BasketProfitPercent уже установлен из BasketProfitPercent
+        // g_BasketType уже установлен из BasketType
+        // g_BasketAfterN уже установлен из BasketAfterN
+        
+        // Для тестера всегда включаем робота если это указано во входных параметрах
+        // Это позволит начать торговлю сразу без необходимости нажимать кнопки
+        Print("Настройки тестера: BotEnabled=", g_BotEnabled, 
+              ", Direction=", g_TradeDirection,
+              ", MaxBuy=", g_MaxOrdersBuy,
+              ", MaxSell=", g_MaxOrdersSell,
+              ", Profit%=", g_BasketProfitPercent,
+              ", BasketType=", g_BasketType);
+        return;
+    }
+    
+    //--- ДЛЯ РЕАЛЬНОГО РЕЖИМА - ОБЫЧНАЯ ЛОГИКА
     string pairPrefix = "FX_" + Symbol() + "_" + IntegerToString(MagicNumber) + "_";
     
-    //--- УМНАЯ ЛОГИКА ВОССТАНОВЛЕНИЯ:
     //--- 1. Если есть открытые ордера - это восстановление после сбоя
     if(HasOurOrders()) {
         Print("ОБНАРУЖЕНЫ ОТКРЫТЫЕ ОРДЕРА - режим восстановления после сбоя!");

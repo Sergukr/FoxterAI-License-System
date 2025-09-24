@@ -97,28 +97,7 @@ void HandleButtonClick(string buttonName) {
         ChartRedraw();
     }
     
-    //--- Быстрые кнопки профита
-    else if(buttonName == PANEL_PREFIX + "BtnProfit01") {
-        g_BasketProfitPercent = 0.1;
-        ObjectSetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT, "0.10");
-        Print("Профит % изменен на: 0.1");
-        SaveSettings();
-        ChartRedraw();
-    }
-    else if(buttonName == PANEL_PREFIX + "BtnProfit05") {
-        g_BasketProfitPercent = 0.5;
-        ObjectSetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT, "0.50");
-        Print("Профит % изменен на: 0.5");
-        SaveSettings();
-        ChartRedraw();
-    }
-    else if(buttonName == PANEL_PREFIX + "BtnProfit10") {
-        g_BasketProfitPercent = 1.0;
-        ObjectSetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT, "1.00");
-        Print("Профит % изменен на: 1.0");
-        SaveSettings();
-        ChartRedraw();
-    }
+    //--- БЕЗ БЫСТРЫХ КНОПОК ПРОФИТА (удалены BtnProfit01, BtnProfit05, BtnProfit10)
     
     //--- Тип корзины
     else if(buttonName == PANEL_PREFIX + "BtnBasketNone") {

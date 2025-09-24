@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                            9_panel_create.mqh |
 //|                     Создание панели для FoxterAI v1.6           |
-//|                         АДАПТИВНАЯ ВЕРСИЯ                        |
+//|                         УЛУЧШЕННАЯ ВЕРСИЯ                        |
 //+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
-//| СОЗДАНИЕ ИНТЕРАКТИВНОЙ ПАНЕЛИ - АДАПТИВНАЯ                      |
+//| СОЗДАНИЕ ИНТЕРАКТИВНОЙ ПАНЕЛИ - УЛУЧШЕННАЯ                      |
 //+------------------------------------------------------------------+
 void CreateInteractivePanel() {
     // ВАЖНО: Сначала удаляем старую панель если она есть
@@ -21,21 +21,21 @@ void CreateInteractivePanel() {
     //--- Рассчитываем DPI масштабирование
     double dpiScale = GetDPIScale();
     
-    //--- Адаптивные размеры с учетом DPI
+    //--- Адаптивные размеры с учетом DPI (УВЕЛИЧЕНА ВЫСОТА!)
     int panelWidth = (int)(PANEL_WIDTH * dpiScale);
-    int panelHeight = (int)(PANEL_HEIGHT * dpiScale);
+    int panelHeight = (int)(420 * dpiScale);  // УВЕЛИЧЕНО с 380 до 420
     int buttonHeight = (int)(BUTTON_HEIGHT * dpiScale);
     int editHeight = (int)(EDIT_HEIGHT * dpiScale);
     int fontSize9 = (int)(9 * dpiScale);
     int fontSize10 = (int)(10 * dpiScale);
     int fontSize11 = (int)(11 * dpiScale);
     
-    //--- Отступы и интервалы
+    //--- Отступы и интервалы (УВЕЛИЧЕНЫ!)
     int marginLeft = (int)(10 * dpiScale);
     int marginRight = (int)(10 * dpiScale);
     int spacing = (int)(3 * dpiScale);
-    int lineSpacing = (int)(14 * dpiScale);
-    int sectionSpacing = (int)(20 * dpiScale);
+    int lineSpacing = (int)(18 * dpiScale);     // УВЕЛИЧЕНО с 14 до 18
+    int sectionSpacing = (int)(24 * dpiScale);  // УВЕЛИЧЕНО с 20 до 24
     
     //--- Фон панели (премиум дизайн)
     string bgName = PANEL_PREFIX + "Background";
@@ -56,7 +56,7 @@ void CreateInteractivePanel() {
     ObjectSetInteger(0, bgName, OBJPROP_HIDDEN, false);
     ObjectSetInteger(0, bgName, OBJPROP_ZORDER, 1000);
     
-    currentY += spacing;
+    currentY += (int)(5 * dpiScale);  // Небольшой отступ от верха
     
     //--- Заголовок
     CreateAdaptiveLabel(PANEL_PREFIX + "Title", "FoxterAI v1.6", x + marginLeft, currentY, 
@@ -69,7 +69,7 @@ void CreateInteractivePanel() {
                        x + marginLeft + (int)(100 * dpiScale), currentY, 
                        licenseColor, fontSize9, dpiScale);
     
-    //--- Тренд в правом углу - БЕЗ СТРЕЛОК
+    //--- Тренд в правом углу
     string trendText = "Тренд: ";
     color trendColor;
     if(g_TrendState == TREND_BUY) {
@@ -89,12 +89,12 @@ void CreateInteractivePanel() {
     currentY += sectionSpacing;
     CreateAdaptiveSeparator(PANEL_PREFIX + "Sep1", x + marginLeft/2, currentY, 
                            panelWidth - marginLeft, dpiScale);
-    currentY += spacing;
+    currentY += (int)(5 * dpiScale);
     
     //=== БЛОК 1: УПРАВЛЕНИЕ ===
     CreateAdaptiveLabel(PANEL_PREFIX + "MainControl", "УПРАВЛЕНИЕ", x + marginLeft, currentY, 
                        C'212,175,55', fontSize10, dpiScale);
-    currentY += (int)(15 * dpiScale);
+    currentY += (int)(18 * dpiScale);  // Увеличенный отступ после заголовка
     
     //--- START/STOP
     string btnText = g_BotEnabled ? "STOP" : "START";
@@ -104,7 +104,7 @@ void CreateInteractivePanel() {
     CreateAdaptiveLabel(PANEL_PREFIX + "Status", g_BotEnabled ? "Активен" : "Остановлен", 
                        x + marginLeft + (int)(65 * dpiScale), currentY + spacing, 
                        g_BotEnabled ? C'76,175,80' : C'244,67,54', fontSize9, dpiScale);
-    currentY += buttonHeight + spacing;
+    currentY += buttonHeight + (int)(6 * dpiScale);  // Увеличенный отступ
     
     //--- Направление торговли
     CreateAdaptiveLabel(PANEL_PREFIX + "LblDirection", "Направление:", x + marginLeft, 
@@ -125,7 +125,7 @@ void CreateInteractivePanel() {
                         btnDirWidth, buttonHeight,
                         g_TradeDirection == TRADE_BOTH ? C'33,150,243' : C'66,66,66', 
                         C'224,224,224', dpiScale);
-    currentY += buttonHeight + spacing;
+    currentY += buttonHeight + (int)(6 * dpiScale);  // Увеличенный отступ
     
     //--- Макс ордеров Buy
     CreateAdaptiveLabel(PANEL_PREFIX + "LblMaxBuy", "Макс Buy:", x + marginLeft, 
@@ -147,7 +147,7 @@ void CreateInteractivePanel() {
     CreateAdaptiveButton(PANEL_PREFIX + "BtnApplyMaxSell", "OK", 
                         editMaxSellX + (int)(43 * dpiScale), currentY, 
                         (int)(25 * dpiScale), editHeight, C'46,125,50', C'224,224,224', dpiScale);
-    currentY += editHeight + spacing;
+    currentY += editHeight + (int)(6 * dpiScale);  // Увеличенный отступ
     
     //--- Профит %
     CreateAdaptiveLabel(PANEL_PREFIX + "LblProfit", "Профит %:", x + marginLeft, 
@@ -158,19 +158,7 @@ void CreateInteractivePanel() {
     CreateAdaptiveButton(PANEL_PREFIX + "BtnApplyProfit", "OK", 
                         editProfitX + (int)(43 * dpiScale), currentY, 
                         (int)(25 * dpiScale), editHeight, C'46,125,50', C'224,224,224', dpiScale);
-    
-    //--- Быстрые кнопки профита
-    int quickBtnX = x + marginLeft + (int)(150 * dpiScale);
-    int quickBtnWidth = (int)(40 * dpiScale);
-    CreateAdaptiveButton(PANEL_PREFIX + "BtnProfit01", "0.1%", quickBtnX, currentY, 
-                        quickBtnWidth, editHeight, C'66,66,66', C'224,224,224', dpiScale);
-    CreateAdaptiveButton(PANEL_PREFIX + "BtnProfit05", "0.5%", 
-                        quickBtnX + quickBtnWidth + spacing, currentY, 
-                        quickBtnWidth, editHeight, C'66,66,66', C'224,224,224', dpiScale);
-    CreateAdaptiveButton(PANEL_PREFIX + "BtnProfit10", "1.0%", 
-                        quickBtnX + 2 * (quickBtnWidth + spacing), currentY, 
-                        quickBtnWidth, editHeight, C'66,66,66', C'224,224,224', dpiScale);
-    currentY += editHeight + spacing;
+    currentY += editHeight + (int)(6 * dpiScale);  // Увеличенный отступ
     
     //--- Тип корзины
     CreateAdaptiveLabel(PANEL_PREFIX + "LblBasket", "Корзина:", x + marginLeft, 
@@ -197,24 +185,36 @@ void CreateInteractivePanel() {
     CreateAdaptiveButton(PANEL_PREFIX + "BtnApplyBasketN", "OK", 
                         basketNX + (int)(33 * dpiScale), currentY, 
                         (int)(23 * dpiScale), editHeight, C'46,125,50', C'224,224,224', dpiScale);
-    currentY += editHeight + (int)(5 * dpiScale);
+    currentY += editHeight + (int)(8 * dpiScale);  // Увеличенный отступ
     
     CreateAdaptiveSeparator(PANEL_PREFIX + "Sep2", x + marginLeft/2, currentY, 
                            panelWidth - marginLeft, dpiScale);
-    currentY += spacing;
+    currentY += (int)(5 * dpiScale);
     
     //=== БЛОК 2: ИНФОРМАЦИЯ ===
     CreateAdaptiveLabel(PANEL_PREFIX + "InfoTitle", "ИНФОРМАЦИЯ", x + marginLeft, currentY, 
                        C'212,175,55', fontSize10, dpiScale);
-    currentY += (int)(15 * dpiScale);
+    currentY += (int)(18 * dpiScale);  // Увеличенный отступ
     
-    //--- Позиции
+    //--- Позиции Buy
     CreateAdaptiveLabel(PANEL_PREFIX + "InfoBuy", "Buy: нет позиций", x + marginLeft, currentY, 
                        C'224,224,224', fontSize9, dpiScale);
     currentY += lineSpacing;
+    
+    //--- Целевой TP для Buy (НОВОЕ!)
+    CreateAdaptiveLabel(PANEL_PREFIX + "InfoBuyTP", "", x + marginLeft + (int)(15 * dpiScale), 
+                       currentY, C'76,175,80', fontSize9, dpiScale);
+    currentY += lineSpacing;
+    
+    //--- Позиции Sell
     CreateAdaptiveLabel(PANEL_PREFIX + "InfoSell", "Sell: нет позиций", x + marginLeft, currentY, 
                        C'224,224,224', fontSize9, dpiScale);
-    currentY += (int)(16 * dpiScale);
+    currentY += lineSpacing;
+    
+    //--- Целевой TP для Sell (НОВОЕ!)
+    CreateAdaptiveLabel(PANEL_PREFIX + "InfoSellTP", "", x + marginLeft + (int)(15 * dpiScale), 
+                       currentY, C'244,67,54', fontSize9, dpiScale);
+    currentY += (int)(20 * dpiScale);  // Увеличенный отступ перед статистикой
     
     //--- Статистика (2 колонки)
     CreateAdaptiveLabel(PANEL_PREFIX + "ProfitToday", "Сегодня: $0.00", x + marginLeft, currentY, 
@@ -228,7 +228,7 @@ void CreateInteractivePanel() {
     CreateAdaptiveLabel(PANEL_PREFIX + "ProfitMonth", "Месяц: $0.00", 
                        x + marginLeft + (int)(140 * dpiScale), currentY, 
                        C'224,224,224', fontSize9, dpiScale);
-    currentY += (int)(16 * dpiScale);
+    currentY += (int)(20 * dpiScale);  // Увеличенный отступ
     
     //--- Счет
     CreateAdaptiveLabel(PANEL_PREFIX + "AccountInfo", "Баланс/Эквити: $1000.00 / $999.97", 
@@ -236,16 +236,16 @@ void CreateInteractivePanel() {
     currentY += lineSpacing;
     CreateAdaptiveLabel(PANEL_PREFIX + "DrawdownInfo", "Просадка: $0.03 (0.0%)", 
                        x + marginLeft, currentY, C'224,224,224', fontSize9, dpiScale);
-    currentY += (int)(16 * dpiScale);
+    currentY += (int)(20 * dpiScale);  // Увеличенный отступ
     
     CreateAdaptiveSeparator(PANEL_PREFIX + "Sep3", x + marginLeft/2, currentY, 
                            panelWidth - marginLeft, dpiScale);
-    currentY += spacing;
+    currentY += (int)(5 * dpiScale);
     
     //=== БЛОК 3: ЭКСТРЕННОЕ ЗАКРЫТИЕ ===
     CreateAdaptiveLabel(PANEL_PREFIX + "EmergencyTitle", "ЭКСТРЕННОЕ ЗАКРЫТИЕ", 
                        x + marginLeft, currentY, C'212,175,55', fontSize10, dpiScale);
-    currentY += (int)(15 * dpiScale);
+    currentY += (int)(18 * dpiScale);  // Увеличенный отступ
     
     int closeBtnWidth = (int)(88 * dpiScale);
     CreateAdaptiveButton(PANEL_PREFIX + "BtnCloseBuy", "CLOSE BUY", x + marginLeft, currentY, 
@@ -312,7 +312,7 @@ bool CreateAdaptiveButton(string name, string text, int x, int y, int width, int
 }
 
 //+------------------------------------------------------------------+
-//| СОЗДАНИЕ АДАПТИВНОГО ПОЛЯ ВВОДА - ИСПРАВЛЕНО                     |
+//| СОЗДАНИЕ АДАПТИВНОГО ПОЛЯ ВВОДА                                  |
 //+------------------------------------------------------------------+
 bool CreateAdaptiveEdit(string name, string text, int x, int y, int width, int height, double scale) {
     if(ObjectFind(0, name) >= 0) ObjectDelete(0, name);
@@ -332,7 +332,7 @@ bool CreateAdaptiveEdit(string name, string text, int x, int y, int width, int h
     ObjectSetInteger(0, name, OBJPROP_FONTSIZE, (int)(8 * scale));
     ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_CENTER);
     
-    // КРИТИЧЕСКИЕ ИЗМЕНЕНИЯ ДЛЯ РАБОТЫ ПОЛЕЙ ВВОДА:
+    // КРИТИЧЕСКИ ВАЖНО ДЛЯ РАБОТЫ ПОЛЕЙ ВВОДА:
     ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false); // НЕ перетаскиваемый
     ObjectSetInteger(0, name, OBJPROP_READONLY, false);   // НЕ только для чтения
     ObjectSetInteger(0, name, OBJPROP_ZORDER, 1002);      // Выше чем кнопки

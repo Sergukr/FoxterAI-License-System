@@ -94,6 +94,8 @@ int OnInit() {
     Print("✅ Лицензия активна: ", GetLicenseStatusText());
     
     //--- Инициализация переменных из входных параметров
+    g_BotEnabled = EnableTrading;        // НОВОЕ! Инициализация из входного параметра
+    g_TradeDirection = TradeDirection;   // НОВОЕ! Инициализация направления торговли
     g_UseImpulse = UseImpulse;
     g_FirstLot = FirstLot;
     g_MaxOrdersBuy = MaxOrdersBuy;
@@ -125,7 +127,7 @@ int OnInit() {
     ResetSeriesInfo(g_BuySeries);
     ResetSeriesInfo(g_SellSeries);
     
-    //--- Загрузка сохраненных настроек
+    //--- Загрузка сохраненных настроек (с учетом тестера)
     LoadSettings();
     
     //--- Определение начального тренда
@@ -145,11 +147,14 @@ int OnInit() {
     Print("========================================");
     Print("✅ СОВЕТНИК ГОТОВ К РАБОТЕ");
     Print("Робот: ", g_BotEnabled ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН (нажмите START на панели)");
+    Print("Направление: ", g_TradeDirection == TRADE_BOTH ? "BOTH" : 
+          (g_TradeDirection == TRADE_BUY_ONLY ? "BUY ONLY" : "SELL ONLY"));
     Print("Импульс: ", g_UseImpulse ? "ВКЛЮЧЕН (ждем импульс)" : "ВЫКЛЮЧЕН (вход по тренду)");
     Print("Тренд при старте: ", g_TrendState == TREND_BUY ? "BUY ↑" : 
           (g_TrendState == TREND_SELL ? "SELL ↓" : "НЕ ОПРЕДЕЛЕН"));
     if(IsTestMode()) {
         Print("🔧 РЕЖИМ ТЕСТЕРА: Лицензия не проверяется");
+        Print("🔧 РЕЖИМ ТЕСТЕРА: Используются только входные параметры");
     } else {
         Print("📅 Проверка лицензии: раз в сутки");
         Print("💓 Heartbeat: раз в 12 часов");
@@ -402,7 +407,8 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
                         Alert("Лицензия активирована!\n\nСоветник готов к работе.");
                         
                         // Продолжаем нормальную инициализацию после успешной активации
-                        g_BotEnabled = true;
+                        g_BotEnabled = EnableTrading;  // ИСПРАВЛЕНО! Берем из входного параметра
+                        g_TradeDirection = TradeDirection;  // ИСПРАВЛЕНО! Берем из входного параметра
                         LoadSettings();
                         DetectInitialTrend();
                         if(ShowPanel) {
@@ -420,6 +426,67 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
             }
         }
         return; // Блокируем другие события пока открыт диалог
+    }
+    
+    //--- ДОБАВЛЕНО: Обработка изменения полей ввода
+    if(id == CHARTEVENT_OBJECT_ENDEDIT) {
+        if(StringFind(sparam, PANEL_PREFIX + "Edit") == 0) {
+            // Определяем какое поле было изменено
+            if(sparam == PANEL_PREFIX + "EditMaxBuy") {
+                string value = ObjectGetString(0, sparam, OBJPROP_TEXT);
+                int newMax = (int)StringToInteger(value);
+                if(newMax > 0 && newMax <= 100) {
+                    g_MaxOrdersBuy = newMax;
+                    Print("Макс Buy изменен на: ", g_MaxOrdersBuy);
+                    SaveSettings();
+                } else {
+                    // Возвращаем прежнее значение при некорректном вводе
+                    ObjectSetString(0, sparam, OBJPROP_TEXT, IntegerToString(g_MaxOrdersBuy));
+                    Print("Некорректное значение макс Buy: ", value);
+                }
+            }
+            else if(sparam == PANEL_PREFIX + "EditMaxSell") {
+                string value = ObjectGetString(0, sparam, OBJPROP_TEXT);
+                int newMax = (int)StringToInteger(value);
+                if(newMax > 0 && newMax <= 100) {
+                    g_MaxOrdersSell = newMax;
+                    Print("Макс Sell изменен на: ", g_MaxOrdersSell);
+                    SaveSettings();
+                } else {
+                    // Возвращаем прежнее значение при некорректном вводе
+                    ObjectSetString(0, sparam, OBJPROP_TEXT, IntegerToString(g_MaxOrdersSell));
+                    Print("Некорректное значение макс Sell: ", value);
+                }
+            }
+            else if(sparam == PANEL_PREFIX + "EditProfit") {
+                string value = ObjectGetString(0, sparam, OBJPROP_TEXT);
+                double newProfit = StringToDouble(value);
+                if(newProfit > 0 && newProfit <= 10) {
+                    g_BasketProfitPercent = newProfit;
+                    Print("Профит % изменен на: ", g_BasketProfitPercent);
+                    SaveSettings();
+                } else {
+                    // Возвращаем прежнее значение при некорректном вводе
+                    ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(g_BasketProfitPercent, 2));
+                    Print("Некорректное значение профита: ", value);
+                }
+            }
+            else if(sparam == PANEL_PREFIX + "EditBasketN") {
+                string value = ObjectGetString(0, sparam, OBJPROP_TEXT);
+                int newN = (int)StringToInteger(value);
+                if(newN > 0 && newN <= 20) {
+                    g_BasketAfterN = newN;
+                    Print("Корзина после N изменена на: ", g_BasketAfterN);
+                    SaveSettings();
+                } else {
+                    // Возвращаем прежнее значение при некорректном вводе
+                    ObjectSetString(0, sparam, OBJPROP_TEXT, IntegerToString(g_BasketAfterN));
+                    Print("Некорректное значение N: ", value);
+                }
+            }
+            ChartRedraw();
+            return;
+        }
     }
     
     //--- Обработка нажатия кнопок панели

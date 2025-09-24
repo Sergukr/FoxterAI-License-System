@@ -46,7 +46,6 @@ int g_BasketAfterN = 5;                           // После скольких
 bool g_IncludeCommissionSwap = false;             // Учитывать комиссию и своп в расчетах
 double g_EstimatedCommissionPerLot = 7.0;         // Примерная комиссия на лот (в валюте счета)
 double g_SlippagePercent = 0.1;                   // Компенсация проскальзывания (% от профита)
-
 bool g_FirstTickAfterInit = true;                 // Первый тик после инициализации
 
 //--- Позиция панели (КАРДИНАЛЬНО УВЕЛИЧЕН ОТСТУП!)
@@ -59,9 +58,9 @@ int g_DragOffsetY = 0;
 //--- Флаг для блокировки перетаскивания при клике на кнопку
 bool g_ButtonClicked = false;
 
-//--- ТОЧНЫЕ размеры панели под контент
+//--- ОБНОВЛЕННЫЕ размеры панели под улучшенный контент
 const int PANEL_WIDTH = 340;
-const int PANEL_HEIGHT = 380;  // Точно под размер контента
+const int PANEL_HEIGHT = 420;   // УВЕЛИЧЕНО с 380 до 420 пикселей для лучшей читаемости
 const int BUTTON_HEIGHT = 20;
 const int BUTTON_WIDTH = 88;
 const int EDIT_HEIGHT = 18;
