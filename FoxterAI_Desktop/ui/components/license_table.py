@@ -1,7 +1,6 @@
 """
-Компонент таблицы лицензий с премиальным дизайном
-Изумрудно-золотая стилистика согласно дизайн-гайду
-ИСПРАВЛЕНО: Ошибка Item I001 not found
+Компонент таблицы лицензий с оптимизированными колонками
+Только необходимая информация согласно требованиям
 ПОЛНЫЙ ФАЙЛ ДЛЯ ЗАМЕНЫ: FoxterAI_Desktop/ui/components/license_table.py
 """
 
@@ -19,7 +18,7 @@ from themes.dark_theme import DarkTheme
 
 
 class LicenseTable(ctk.CTkFrame):
-    """Премиальная таблица лицензий с hover эффектами и анимациями"""
+    """Оптимизированная таблица лицензий с премиальным дизайном"""
     
     def __init__(self, parent):
         """
@@ -67,12 +66,20 @@ class LicenseTable(ctk.CTkFrame):
         self.tree_frame = ctk.CTkFrame(self.table_container, fg_color='transparent')
         self.tree_frame.pack(fill='both', expand=True, padx=5, pady=5)
         
-        # Колонки таблицы
+        # ОПТИМИЗИРОВАННЫЕ КОЛОНКИ (только необходимые)
         columns = (
-            'Ключ', 'Клиент', 'Телефон', 'Telegram', 
-            'Владелец', 'Счёт', 'Брокер', 'Робот', 'Версия',
-            'Баланс', 'Тип', 'Создана', 'Истекает', 'Дней',
-            'Статус'
+            'Ключ',           # license_key
+            'Клиент',         # client_name
+            'Счёт',           # account_number
+            'Брокер',         # broker_name (полное название)
+            'Робот',          # robot_name
+            'Версия',         # robot_version
+            'Баланс',         # last_balance
+            'Эквити',         # equity (пока нет в данных)
+            'Профит',         # profit (пока нет в данных)
+            'Тип',            # account_type (Real/Demo)
+            'Дней',           # days_left (до окончания)
+            'Статус'          # status
         )
         
         self.tree = ttk.Treeview(
@@ -89,23 +96,20 @@ class LicenseTable(ctk.CTkFrame):
         # Скрываем первую колонку дерева
         self.tree.column('#0', width=0, stretch=False)
         
-        # Настройка колонок
+        # Настройка колонок с оптимизированной шириной
         column_widths = {
-            'Ключ': 150,
-            'Клиент': 120,
-            'Телефон': 100,
-            'Telegram': 100,
-            'Владелец': 120,
-            'Счёт': 80,
-            'Брокер': 80,
-            'Робот': 80,
-            'Версия': 60,
-            'Баланс': 80,
-            'Тип': 50,
-            'Создана': 90,
-            'Истекает': 90,
-            'Дней': 50,
-            'Статус': 100
+            'Ключ': 180,      # Увеличен для полного отображения
+            'Клиент': 150,    # Имя клиента
+            'Счёт': 100,      # Номер счета
+            'Брокер': 120,    # Полное название брокера
+            'Робот': 80,      # Название робота
+            'Версия': 60,     # Версия робота
+            'Баланс': 100,    # Баланс счета
+            'Эквити': 100,    # Эквити (будущее)
+            'Профит': 100,    # Профит (будущее)
+            'Тип': 60,        # Real/Demo
+            'Дней': 80,       # Дней до окончания
+            'Статус': 120     # Статус лицензии
         }
         
         for column in columns:
@@ -132,7 +136,7 @@ class LicenseTable(ctk.CTkFrame):
         self.tree.bind('<Button-3>', self._on_right_click)
     
     def _setup_styles(self):
-        """Настройка премиальных стилей таблицы"""
+        """Настройка премиальных стилей таблицы согласно дизайн-гайду"""
         style = ttk.Style()
         
         # Тёмная тема
@@ -140,23 +144,22 @@ class LicenseTable(ctk.CTkFrame):
         
         # Цвета из темы
         bg_primary = DarkTheme.BG_TERTIARY
-        bg_hover = DarkTheme.BG_HOVER
+        bg_hover = DarkTheme.SOFT_MINT  # Мятная подсветка при наведении
         bg_selected = DarkTheme.JADE_GREEN
         text_primary = DarkTheme.PURE_WHITE
         text_secondary = DarkTheme.WARM_GRAY
-        border_color = DarkTheme.BORDER_PRIMARY
         
         # Стиль Treeview
         style.configure(
             'Treeview',
             background=bg_primary,
-            foreground=text_primary,
+            foreground=text_secondary,  # Основной текст серый
             fieldbackground=bg_primary,
             borderwidth=0,
             font=('Inter', 10)
         )
         
-        # Стиль заголовков
+        # Стиль заголовков (золотой цвет)
         style.configure(
             'Treeview.Heading',
             background=DarkTheme.GRAPHITE_GRAY,
@@ -178,16 +181,16 @@ class LicenseTable(ctk.CTkFrame):
             background=[('active', bg_hover)]
         )
         
-        # Теги для разных статусов
-        self.tree.tag_configure('active', foreground=DarkTheme.STATUS_ACTIVE)
-        self.tree.tag_configure('expired', foreground=DarkTheme.STATUS_EXPIRED)
+        # Теги для разных статусов (согласно дизайн-гайду)
+        self.tree.tag_configure('active', foreground=DarkTheme.JADE_GREEN, font=('Inter', 10, 'bold'))
+        self.tree.tag_configure('expired', foreground=DarkTheme.COPPER_BRONZE, font=('Inter', 10, 'italic'))
         self.tree.tag_configure('blocked', foreground=DarkTheme.STATUS_BLOCKED)
-        self.tree.tag_configure('created', foreground=DarkTheme.STATUS_PENDING)
+        self.tree.tag_configure('created', foreground=DarkTheme.COPPER_BRONZE, font=('Inter', 10, 'italic'))
         self.tree.tag_configure('expiring', foreground=DarkTheme.STATUS_WARNING)
     
     def load_licenses(self, licenses: List):
         """
-        Загрузить лицензии в таблицу с премиальными эффектами
+        Загрузить лицензии в таблицу
         
         Args:
             licenses: Список лицензий (License объекты или словари)
@@ -203,7 +206,7 @@ class LicenseTable(ctk.CTkFrame):
         self._apply_filters()
     
     def _apply_filters(self):
-        """Применение фильтров и поиска с анимацией"""
+        """Применение фильтров и поиска"""
         # Фильтруем данные
         filtered = self.licenses
         
@@ -232,79 +235,89 @@ class LicenseTable(ctk.CTkFrame):
             self._insert_license(license)
     
     def _insert_license(self, license):
-        """Вставка лицензии в таблицу с форматированием"""
-        # Извлекаем поля в зависимости от типа данных
+        """Вставка лицензии в таблицу с оптимизированными полями"""
+        # Извлекаем ТОЛЬКО НУЖНЫЕ поля
         key = self._get_field(license, 'license_key', 'N/A')
         client_name = self._get_field(license, 'client_name', '-')
-        phone = self._get_field(license, 'client_contact', '-')
-        telegram = self._get_field(license, 'client_telegram', '-')
-        owner = self._get_field(license, 'account_owner', 'Не активирован')
         account = self._get_field(license, 'account_number', '-')
         broker = self._get_field(license, 'broker_name', '-')
         robot = self._get_field(license, 'robot_name', '-')
         version = self._get_field(license, 'robot_version', '-')
         balance = self._get_field(license, 'last_balance', 0)
         account_type = self._get_field(license, 'account_type', '-')
-        created = self._get_field(license, 'created_date_formatted', 
-                                 self._format_date(self._get_field(license, 'created_date')))
-        expiry = self._get_field(license, 'expiry_date', '-')
         days_left = self._get_field(license, 'days_left', 999)
         status = self._get_field(license, 'status', 'unknown')
         
-        # Форматирование значений
-        if phone == 'None' or phone is None:
-            phone = '-'
-        if telegram == 'None' or telegram is None:
-            telegram = '-'
-        if owner == 'Не активирован' or owner == 'None' or owner is None:
-            owner = 'Не активирован'
-        if account == 'None' or account is None or account == '-':
+        # ВАЖНО: Эквити и Профит пока недоступны в данных
+        # Сервер не сохраняет эти поля из heartbeat
+        # Показываем прочерк, пока не будет реализовано на сервере
+        equity = '-'
+        profit = '-'
+        
+        # Проверяем и форматируем значения
+        if account == 'None' or account is None or account == '':
             account = '-'
-        if broker == 'None' or broker is None:
+        
+        # Показываем полное название брокера (не сокращение)
+        if broker == 'None' or broker is None or broker == '':
             broker = '-'
+        
         if robot == 'None' or robot is None:
             robot = '-'
+        
         if version == 'None' or version is None:
             version = '-'
         
-        # Форматируем баланс
-        if isinstance(balance, (int, float)):
+        # Форматируем баланс с золотым цветом (согласно дизайн-гайду)
+        if isinstance(balance, (int, float)) and balance > 0:
             balance_str = f'${balance:.2f}'
         else:
-            balance_str = '-'
+            balance_str = '$0.00'
         
-        # Форматируем дату истечения
-        if expiry and expiry != '-':
-            expiry_formatted = self._format_date(expiry)
+        # Форматируем тип счета
+        if account_type in ['Real', 'real', 'REAL']:
+            type_str = 'Real'
+        elif account_type in ['Demo', 'demo', 'DEMO']:
+            type_str = 'Demo'
         else:
-            expiry_formatted = '-'
+            type_str = '-'
         
         # Форматируем дни до истечения
         if isinstance(days_left, int):
-            if days_left == 999:
+            if days_left == 999 or days_left < 0:
                 days_str = '∞'
-            elif days_left < 0:
-                days_str = 'Истек'
+            elif days_left == 0:
+                days_str = 'Сегодня!'
+            elif days_left <= 7:
+                days_str = f'⚠️ {days_left}д'
             else:
-                days_str = str(days_left) + 'д'
+                days_str = f'{days_left}д'
         else:
             days_str = '-'
         
-        # Определяем статус для отображения
+        # Определяем статус для отображения с эмодзи
         status_display = self._get_status_display(status)
         
         # Определяем тег для строки
         tag = self._get_status_tag(status, days_left)
         
-        # Вставляем в таблицу
+        # Вставляем в таблицу ТОЛЬКО НУЖНЫЕ КОЛОНКИ
         values = (
-            key, client_name, phone, telegram, 
-            owner, account, broker, robot, version,
-            balance_str, account_type, created, 
-            expiry_formatted, days_str, status_display
+            key,              # Ключ
+            client_name,      # Клиент
+            account,          # Счёт
+            broker,           # Брокер (полное название)
+            robot,            # Робот
+            version,          # Версия
+            balance_str,      # Баланс
+            equity,           # Эквити (пока недоступно)
+            profit,           # Профит (пока недоступно)
+            type_str,         # Тип счета
+            days_str,         # Дней до окончания
+            status_display    # Статус
         )
         
-        # ИСПРАВЛЕНО: Не сохраняем item ID, просто вставляем
+        # Вставляем с тегом для стилизации
         self.tree.insert('', 'end', values=values, tags=(tag,))
     
     def _get_field(self, obj, field_name, default='-'):
@@ -324,30 +337,13 @@ class LicenseTable(ctk.CTkFrame):
         
         return value
     
-    def _format_date(self, date_str):
-        """Форматирование даты"""
-        if not date_str or date_str == '-' or date_str == 'None':
-            return '-'
-        
-        try:
-            # Пробуем разные форматы
-            for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%d.%m.%Y']:
-                try:
-                    dt = datetime.strptime(str(date_str), fmt)
-                    return dt.strftime('%d.%m.%Y')
-                except:
-                    continue
-            return str(date_str)
-        except:
-            return str(date_str)
-    
     def _get_status_display(self, status):
-        """Получить отображаемый статус"""
+        """Получить отображаемый статус с эмодзи (согласно дизайн-гайду)"""
         status_map = {
             'active': '✅ Активна',
             'expired': '⏰ Истекла',
             'blocked': '🔒 Заблокирована',
-            'created': '⏳ Не активирована'
+            'created': '🌙 Не активирована'  # Луна со свечением из гайда
         }
         return status_map.get(status, status)
     
@@ -366,11 +362,10 @@ class LicenseTable(ctk.CTkFrame):
         return ''
     
     def _search_in_license(self, license, query):
-        """Поиск в лицензии"""
+        """Поиск в лицензии по оптимизированным полям"""
         searchable_fields = [
-            'license_key', 'client_name', 'client_contact', 
-            'client_telegram', 'account_owner', 'account_number',
-            'broker_name', 'robot_name'
+            'license_key', 'client_name', 'account_number',
+            'broker_name', 'robot_name', 'robot_version'
         ]
         
         for field in searchable_fields:
@@ -505,12 +500,20 @@ class LicenseTable(ctk.CTkFrame):
         blocked = len([l for l in self.licenses if self._get_field(l, 'status') == 'blocked'])
         created = len([l for l in self.licenses if self._get_field(l, 'status') == 'created'])
         
+        # Считаем общий баланс
+        total_balance = 0
+        for lic in self.licenses:
+            balance = self._get_field(lic, 'last_balance', 0)
+            if isinstance(balance, (int, float)):
+                total_balance += balance
+        
         return {
             'total': total,
             'active': active,
             'expired': expired,
             'blocked': blocked,
-            'created': created
+            'created': created,
+            'balance': total_balance
         }
     
     def export_to_list(self) -> List[Dict]:
@@ -520,17 +523,12 @@ class LicenseTable(ctk.CTkFrame):
             result.append({
                 'license_key': self._get_field(license, 'license_key'),
                 'client_name': self._get_field(license, 'client_name'),
-                'client_contact': self._get_field(license, 'client_contact'),
-                'client_telegram': self._get_field(license, 'client_telegram'),
-                'account_owner': self._get_field(license, 'account_owner'),
                 'account_number': self._get_field(license, 'account_number'),
                 'broker_name': self._get_field(license, 'broker_name'),
                 'robot_name': self._get_field(license, 'robot_name'),
                 'robot_version': self._get_field(license, 'robot_version'),
                 'last_balance': self._get_field(license, 'last_balance'),
                 'account_type': self._get_field(license, 'account_type'),
-                'created_date': self._get_field(license, 'created_date'),
-                'expiry_date': self._get_field(license, 'expiry_date'),
                 'days_left': self._get_field(license, 'days_left'),
                 'status': self._get_field(license, 'status')
             })
