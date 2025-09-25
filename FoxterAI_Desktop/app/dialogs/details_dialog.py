@@ -1,7 +1,7 @@
 """
 Диалог деталей лицензии с премиум дизайном
 ПОЛНЫЙ ФАЙЛ ДЛЯ ЗАМЕНЫ: FoxterAI_Desktop/app/dialogs/details_dialog.py
-ИСПРАВЛЕНО: Все ошибки с отсутствующими константами
+ИСПРАВЛЕНО: Убрана кнопка печати, исправлено отображение владельца счета и дней
 """
 
 import customtkinter as ctk
@@ -157,13 +157,16 @@ class LicenseDetailsDialog(CustomDialog):
         )
         scroll_frame.pack(fill='both', expand=True, padx=5, pady=5)
         
+        # ИСПРАВЛЕНО: Правильное отображение оставшихся дней
+        days_left_display = self._get_proper_days_left_display()
+        
         # Информация
         info_items = [
             ("📅 Дата создания", self._format_date(self.license_data.get('created_date'))),
             ("⏰ Срок действия", f"{self.license_data.get('months', 1)} мес."),
             ("📆 Дата активации", self._format_date(self.license_data.get('activation_date', '-'))),
             ("📆 Дата истечения", self._format_date(self.license_data.get('expiry_date', '-'))),
-            ("⏳ Осталось дней", self._format_days_left(self.license_data.get('days_left'))),
+            ("⏳ Осталось дней", days_left_display),  # ИСПРАВЛЕНО
             ("🤖 Робот", self.license_data.get('robot_name') or 'Не привязан'),
             ("📈 Версия робота", self.license_data.get('robot_version') or '-'),
             ("💼 Тип счета", self.license_data.get('account_type', 'Real')),
@@ -184,11 +187,14 @@ class LicenseDetailsDialog(CustomDialog):
         )
         scroll_frame.pack(fill='both', expand=True, padx=5, pady=5)
         
+        # ИСПРАВЛЕНО: Правильное отображение владельца счета
+        account_owner = self._get_proper_account_owner()
+        
         client_items = [
             ("👤 Имя клиента", self.license_data.get('client_name') or '-'),
             ("📞 Телефон", self.license_data.get('client_contact') or '-'),
             ("💬 Telegram", self.license_data.get('client_telegram') or '-'),
-            ("🏦 Владелец счета", self.license_data.get('account_owner') or 'Не активирован'),
+            ("🏦 Владелец счета", account_owner),  # ИСПРАВЛЕНО
             ("🔢 Номер счета", str(self.license_data.get('account_number')) if self.license_data.get('account_number') else '-'),
             ("🏢 Брокер", self.license_data.get('broker_name') or '-')
         ]
@@ -405,18 +411,7 @@ class LicenseDetailsDialog(CustomDialog):
         )
         export_btn.pack(side='right', padx=(0, 10))
         
-        # Кнопка печати
-        print_btn = ctk.CTkButton(
-            button_frame,
-            text="🖨️ Печать",
-            width=120,
-            height=35,
-            fg_color=DarkTheme.BUTTON_SECONDARY,
-            hover_color=DarkTheme.BUTTON_SECONDARY_HOVER,
-            font=(DarkTheme.FONT_FAMILY, 12),
-            command=self._print_license
-        )
-        print_btn.pack(side='right', padx=(0, 10))
+        # ИСПРАВЛЕНО: Убрана кнопка печати
         
         # Левая сторона - кнопки действий в зависимости от статуса
         status = self.license_data.get('status', 'unknown')
@@ -479,6 +474,59 @@ class LicenseDetailsDialog(CustomDialog):
     
     # ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
     
+    def _get_proper_days_left_display(self):
+        """ИСПРАВЛЕНО: Правильное отображение оставшихся дней"""
+        status = self.license_data.get('status', 'unknown')
+        
+        # Если лицензия не активирована
+        if status == 'created':
+            return '∞ (не активирована)'
+        
+        # Если лицензия заблокирована
+        if status == 'blocked':
+            return 'Заблокирована'
+        
+        # Используем days_left_text если есть
+        if 'days_left_text' in self.license_data:
+            return self.license_data['days_left_text']
+        
+        # Иначе используем days_left
+        days_left = self.license_data.get('days_left')
+        if days_left is not None:
+            if days_left == 999 or days_left == -1:
+                return '∞ (не активирована)'
+            elif days_left < 0:
+                return f'Истекла {abs(days_left)} дн. назад'
+            elif days_left == 0:
+                return '⚠️ Истекает сегодня!'
+            elif days_left <= 7:
+                return f'⚠️ {days_left} дн.'
+            else:
+                return f'{days_left} дн.'
+        
+        # По умолчанию
+        return '-'
+    
+    def _get_proper_account_owner(self):
+        """ИСПРАВЛЕНО: Правильное отображение владельца счета"""
+        # Используем account_owner из модели License
+        account_owner = self.license_data.get('account_owner')
+        
+        if account_owner and account_owner not in ['None', 'null', '', None]:
+            return account_owner
+        
+        # Если счет есть но владелец не передан
+        account_number = self.license_data.get('account_number')
+        if account_number and account_number not in ['None', '', None]:
+            return f"Счет {account_number}"
+        
+        # Если лицензия не активирована
+        status = self.license_data.get('status', 'unknown')
+        if status == 'created':
+            return 'Не активирована'
+        
+        return '-'
+    
     def _format_date(self, date_str):
         """Форматирование даты"""
         if not date_str or date_str in ['-', 'None', None, '']:
@@ -506,24 +554,6 @@ class LicenseDetailsDialog(CustomDialog):
             return str(date_str)
         except:
             return str(date_str)
-    
-    def _format_days_left(self, days):
-        """Форматирование оставшихся дней"""
-        if days is None:
-            return '-'
-        elif days == 999:
-            return '∞ (не активирована)'
-        elif days < 0:
-            return f'Истекла {abs(days)} дн. назад'
-        elif days == 0:
-            return '⚠️ Истекает сегодня!'
-        elif days <= 7:
-            return f'⚠️ {days} дн.'
-        elif days <= 30:
-            return f'{days} дн.'
-        else:
-            months = days // 30
-            return f'{days} дн. (~{months} мес.)'
     
     def _format_balance(self, balance):
         """Форматирование баланса"""
@@ -618,18 +648,6 @@ class LicenseDetailsDialog(CustomDialog):
                     f"Не удалось экспортировать лицензию:\n{str(e)}",
                     "error"
                 )
-    
-    def _print_license(self):
-        """Печать информации о лицензии"""
-        # Заглушка для печати
-        print("🖨️ Функция печати в разработке")
-        
-        if hasattr(self.master, 'show_notification'):
-            self.master.show_notification(
-                "Печать",
-                "Функция печати будет доступна в следующей версии",
-                "info"
-            )
     
     def _open_edit_dialog(self):
         """Открыть диалог редактирования"""

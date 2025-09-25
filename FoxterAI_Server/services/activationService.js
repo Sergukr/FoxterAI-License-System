@@ -1,7 +1,7 @@
 /**
  * FoxterAI_Server/services/activationService.js
  * Бизнес-логика активации и проверки лицензий
- * ИСПРАВЛЕНО: Привязка только по account_number + robot_name
+ * ИСПРАВЛЕНО: Добавлено сохранение equity и profit в heartbeat
  */
 
 const crypto = require('crypto');
@@ -267,18 +267,19 @@ class ActivationService {
             
             return {
                 success: true,
-                status: 'active',
-                message: 'License is valid',
-                expiry_date: license.expiry_date,
+                status: license.status,
                 days_left: daysLeft
             };
             
         } catch (error) {
             logger.error('Activation error:', error);
+            await eventLogger.log('ACTIVATION_ERROR', maskedKey, robot_name, '',
+                'Ошибка при активации лицензии', 'high', { error: error.message, ip });
+            
             return {
                 success: false,
                 error: 'INTERNAL_ERROR',
-                message: 'Server error during activation'
+                message: 'Activation failed due to internal error'
             };
         }
     }
@@ -288,16 +289,20 @@ class ActivationService {
      */
     async check(data) {
         const key = data.key || data.license_key || data.Key;
+        const account = data.account || data.AccountNumber || data.Account;
         const robot_name = data.robot_name || data.RobotName || 'FoxterAI';
-        const account = data.account || data.AccountNumber;
+        const balance = data.balance || data.Balance || 0;
         const ip = data.ip;
         
-        if (!key) {
+        if (!key || !account) {
             return {
                 success: false,
-                error: 'KEY_REQUIRED'
+                error: 'MISSING_PARAMETERS'
             };
         }
+        
+        const maskedKey = key.substring(0, 8) + '***';
+        const maskedAccount = account.toString().substring(0, 3) + '***';
         
         try {
             const license = await db.get(
@@ -312,11 +317,10 @@ class ActivationService {
                 };
             }
             
-            // Проверка статуса
+            // Проверка блокировки
             if (license.status === 'blocked') {
                 return {
                     success: false,
-                    status: 'blocked',
                     error: 'LICENSE_BLOCKED'
                 };
             }
@@ -327,53 +331,53 @@ class ActivationService {
             
             if (expiryDate && expiryDate < now) {
                 await db.run(
-                    'UPDATE licenses SET status = ? WHERE license_key = ?',
-                    ['expired', key]
+                    "UPDATE licenses SET status = 'expired' WHERE license_key = ?",
+                    [key]
                 );
                 
                 return {
                     success: false,
-                    status: 'expired',
                     error: 'LICENSE_EXPIRED'
                 };
             }
             
-            // ПРОВЕРКА ПРИВЯЗКИ - только account_number и robot_name!
-            if (account && license.account_number && license.account_number !== account.toString()) {
+            // Проверка привязки
+            if (license.account_number && license.account_number !== account.toString()) {
+                await eventLogger.log('CHECK_WRONG_ACCOUNT', maskedKey, robot_name, license.client_name,
+                    'Проверка с чужого счета', 'high', { ip });
+                
                 return {
                     success: false,
-                    error: 'WRONG_ACCOUNT',
-                    message: 'License bound to different account'
+                    error: 'WRONG_ACCOUNT'
                 };
             }
             
-            if (robot_name && license.robot_name && license.robot_name !== robot_name) {
+            if (license.robot_name && license.robot_name !== robot_name) {
+                await eventLogger.log('CHECK_WRONG_ROBOT', maskedKey, robot_name, license.client_name,
+                    'Проверка с другим роботом', 'high', { ip });
+                
                 return {
                     success: false,
-                    error: 'WRONG_ROBOT',
-                    message: 'License bound to different robot'
+                    error: 'WRONG_ROBOT'
                 };
             }
             
-            // Проверка автономности
-            const lastCheck = license.last_check ? new Date(license.last_check) : now;
-            const hoursSinceCheck = (now - lastCheck) / (1000 * 60 * 60);
+            // Обновляем статистику
+            await db.run(`
+                UPDATE licenses SET
+                    last_check = datetime('now'),
+                    last_ip = ?,
+                    check_count = check_count + 1,
+                    last_balance = ?,
+                    failed_checks = 0
+                WHERE license_key = ?
+            `, [ip, balance, key]);
             
-            if (hoursSinceCheck > config.AUTONOMY_HOURS) {
-                logger.warn(`License ${key.substring(0, 8)}*** exceeded autonomy period`);
-                return {
-                    success: false,
-                    status: 'check_required',
-                    error: 'CHECK_REQUIRED',
-                    message: 'License requires online check'
-                };
-            }
-            
-            // Обновляем счетчик проверок
-            await db.run(
-                'UPDATE licenses SET check_count = check_count + 1 WHERE license_key = ?',
-                [key]
-            );
+            // Логируем успешную проверку
+            await db.run(`
+                INSERT INTO checks (license_key, ip_address, account_number, robot_name, status, balance)
+                VALUES (?, ?, ?, ?, 'success', ?)
+            `, [key, ip, account.toString(), robot_name, balance]);
             
             const daysLeft = expiryDate ? Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24)) : null;
             
@@ -394,11 +398,13 @@ class ActivationService {
     }
     
     /**
-     * Heartbeat - простое обновление статуса
+     * Heartbeat - ИСПРАВЛЕНО: сохранение equity и profit
      */
     async heartbeat(data) {
         const key = data.key || data.license_key || data.Key;
         const balance = data.balance || data.Balance || 0;
+        const equity = data.equity || data.Equity || 0;  // ДОБАВЛЕНО
+        const profit = data.profit || data.Profit || 0;  // ДОБАВЛЕНО
         const ip = data.ip;
         
         if (!key) {
@@ -406,14 +412,17 @@ class ActivationService {
         }
         
         try {
+            // ИСПРАВЛЕНО: добавлено сохранение equity и profit
             await db.run(`
                 UPDATE licenses SET 
                     last_check = datetime('now'),
                     last_ip = ?,
                     heartbeat_count = heartbeat_count + 1,
-                    last_balance = ?
+                    last_balance = ?,
+                    last_equity = ?,
+                    last_profit = ?
                 WHERE license_key = ?
-            `, [ip, balance, key]);
+            `, [ip, balance, equity, profit, key]);
             
             return { success: true };
             

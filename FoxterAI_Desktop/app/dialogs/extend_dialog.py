@@ -1,5 +1,6 @@
 """
 Диалог продления лицензии с премиум дизайном и анимациями
+ИСПРАВЛЕНО: Добавлен скролл для корректного отображения всех элементов
 """
 
 import customtkinter as ctk
@@ -32,7 +33,8 @@ class ExtendLicenseDialog(CustomDialog):
         key = self.license_data.get('license_key', 'Unknown')
         short_key = f"{key[:20]}..." if len(key) > 20 else key
         
-        super().__init__(parent, f"⏰ Продление: {short_key}", 450, 500)
+        # Увеличена высота для комфортного отображения
+        super().__init__(parent, f"⏰ Продление: {short_key}", 450, 550)
         
         # Результат (количество месяцев)
         self.result = None
@@ -50,16 +52,25 @@ class ExtendLicenseDialog(CustomDialog):
         )
         main_frame.pack(fill='both', expand=True, padx=20, pady=20)
         
+        # ИСПРАВЛЕНО: Добавлен скроллируемый фрейм
+        scroll_frame = ctk.CTkScrollableFrame(
+            main_frame,
+            fg_color='transparent',
+            scrollbar_button_color=DarkTheme.SCROLLBAR_THUMB,
+            scrollbar_button_hover_color=DarkTheme.SCROLLBAR_THUMB_HOVER
+        )
+        scroll_frame.pack(fill='both', expand=True, padx=5, pady=5)
+        
         # Информация о лицензии
-        self._create_license_info(main_frame)
+        self._create_license_info(scroll_frame)
         
         # Выбор срока продления
-        self._create_extension_options(main_frame)
+        self._create_extension_options(scroll_frame)
         
         # Предпросмотр новой даты
-        self._create_preview_section(main_frame)
+        self._create_preview_section(scroll_frame)
         
-        # Кнопки
+        # Кнопки внизу (не в скролле)
         self._create_buttons(main_frame)
     
     def _create_license_info(self, parent):
@@ -69,7 +80,7 @@ class ExtendLicenseDialog(CustomDialog):
             fg_color=DarkTheme.BG_TERTIARY,
             corner_radius=10
         )
-        info_frame.pack(fill='x', padx=15, pady=(15, 10))
+        info_frame.pack(fill='x', padx=10, pady=(10, 10))
         
         # Заголовок блока
         header = ctk.CTkFrame(info_frame, fg_color='transparent')
@@ -169,7 +180,7 @@ class ExtendLicenseDialog(CustomDialog):
         
         # Опции продления
         options_frame = ctk.CTkFrame(parent, fg_color='transparent')
-        options_frame.pack(fill='x', padx=15)
+        options_frame.pack(fill='x', padx=10)
         
         self.months_var = tk.IntVar(value=1)
         
@@ -223,7 +234,7 @@ class ExtendLicenseDialog(CustomDialog):
             border_width=2,
             border_color=DarkTheme.NEON_GREEN_DIM
         )
-        preview_frame.pack(fill='x', padx=15, pady=(15, 10))
+        preview_frame.pack(fill='x', padx=10, pady=(15, 10))
         
         ctk.CTkLabel(
             preview_frame,
@@ -292,37 +303,46 @@ class ExtendLicenseDialog(CustomDialog):
     
     def _create_buttons(self, parent):
         """Создать кнопки действий"""
+        # ИСПРАВЛЕНО: кнопки теперь в основном фрейме, а не в скролле
         btn_frame = ctk.CTkFrame(parent, fg_color='transparent')
-        btn_frame.pack(side='bottom', pady=(10, 15))
+        btn_frame.pack(side='bottom', fill='x', pady=(10, 0))
+        
+        # Центрируем кнопки
+        button_container = ctk.CTkFrame(btn_frame, fg_color='transparent')
+        button_container.pack()
         
         # Кнопка продления
         extend_btn = ctk.CTkButton(
-            btn_frame,
+            button_container,
             text="✅ Продлить",
             command=self._on_extend,
             fg_color=DarkTheme.NEON_GREEN,
             hover_color=DarkTheme.NEON_GREEN_DIM,
+            text_color=DarkTheme.CHARCOAL_BLACK,
             width=120,
             height=35,
-            corner_radius=8
+            corner_radius=8,
+            font=(DarkTheme.FONT_FAMILY, 12, "bold")
         )
-        extend_btn.pack(side='left', padx=5)
+        extend_btn.grid(row=0, column=0, padx=5)
         
         # Эффект свечения для кнопки
         self._add_glow_effect(extend_btn)
         
         # Кнопка отмены
         cancel_btn = ctk.CTkButton(
-            btn_frame,
+            button_container,
             text="❌ Отмена",
             command=self._on_cancel,
             fg_color=DarkTheme.BUTTON_SECONDARY,
             hover_color=DarkTheme.BUTTON_SECONDARY_HOVER,
+            text_color=DarkTheme.TEXT_PRIMARY,
             width=120,
             height=35,
-            corner_radius=8
+            corner_radius=8,
+            font=(DarkTheme.FONT_FAMILY, 12)
         )
-        cancel_btn.pack(side='left', padx=5)
+        cancel_btn.grid(row=0, column=1, padx=5)
     
     def _add_glow_effect(self, button):
         """Добавить эффект свечения кнопке"""
