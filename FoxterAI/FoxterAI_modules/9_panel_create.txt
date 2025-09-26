@@ -279,6 +279,70 @@ void CreateInteractivePanel() {
     CreateAdaptiveLabel(PANEL_PREFIX + "Footer", "📁 Локальное хранение v2.0", 
                        x + panelWidth/2 - (int)(80 * dpiScale), currentY, 
                        C'158,158,158', fontSize9, dpiScale);
+    
+    //--- После создания всех элементов
+    Print("✅ Панель управления создана и настроена");
+    ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| ОБНОВИТЬ ЗНАЧЕНИЯ НА ПАНЕЛИ ПОСЛЕ ИЗМЕНЕНИЯ ПАРАМЕТРОВ         |
+//+------------------------------------------------------------------+
+void RefreshPanelValues() {
+    // Обновляем поля ввода с текущими значениями
+    ObjectSetString(0, PANEL_PREFIX + "EditMaxBuy", OBJPROP_TEXT, IntegerToString(g_MaxOrdersBuy));
+    ObjectSetString(0, PANEL_PREFIX + "EditMaxSell", OBJPROP_TEXT, IntegerToString(g_MaxOrdersSell));
+    ObjectSetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT, DoubleToString(g_BasketProfitPercent, 2));
+    ObjectSetString(0, PANEL_PREFIX + "EditBasketN", OBJPROP_TEXT, IntegerToString(g_BasketAfterN));
+    
+    // Обновляем подсветку кнопок направления торговли
+    if(g_TradeDirection == TRADE_BUY_ONLY) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBuy", OBJPROP_BGCOLOR, C'46,125,50');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'66,66,66');
+    }
+    else if(g_TradeDirection == TRADE_SELL_ONLY) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBuy", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'198,40,40');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'66,66,66');
+    }
+    else if(g_TradeDirection == TRADE_BOTH) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBuy", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'33,150,243');
+    }
+    
+    // Обновляем подсветку кнопок типа корзины
+    if(g_BasketType == BASKET_NONE) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketNone", OBJPROP_BGCOLOR, C'46,125,50');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'66,66,66');
+    }
+    else if(g_BasketType == BASKET_IMMEDIATE) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketNone", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'46,125,50');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'66,66,66');
+    }
+    else if(g_BasketType == BASKET_AFTER_N) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketNone", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'46,125,50');
+    }
+    
+    // Обновляем кнопку Start/Stop
+    ObjectSetString(0, PANEL_PREFIX + "BtnStartStop", OBJPROP_TEXT, 
+                   g_BotEnabled ? "STOP" : "START");
+    ObjectSetInteger(0, PANEL_PREFIX + "BtnStartStop", OBJPROP_BGCOLOR, 
+                    g_BotEnabled ? C'198,40,40' : C'46,125,50');
+    
+    // Обновляем статус активности
+    ObjectSetString(0, PANEL_PREFIX + "Status", OBJPROP_TEXT, 
+                   g_BotEnabled ? "Активен" : "Остановлен");
+    ObjectSetInteger(0, PANEL_PREFIX + "Status", OBJPROP_COLOR, 
+                    g_BotEnabled ? C'76,175,80' : C'244,67,54');
+    
+    Print("✅ Значения на панели синхронизированы с новыми параметрами");
+    ChartRedraw();
 }
 
 //+------------------------------------------------------------------+

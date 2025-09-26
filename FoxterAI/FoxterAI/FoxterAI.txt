@@ -22,7 +22,12 @@
 #include "../FoxterAI_modules/12_visualization.mqh"
 #include "../FoxterAI_modules/13_license.mqh"
 #include "../FoxterAI_modules/14_license_dialog.mqh"
-#include "../FoxterAI_modules/15_storage_manager.mqh"  // НОВЫЙ МОДУЛЬ!
+#include "../FoxterAI_modules/15_storage_manager.mqh"
+
+//--- Предварительное объявление функций
+void RecalculateSeriesBalance();
+void SendHeartbeatSilent();
+void RefreshPanelValues();
 
 //+------------------------------------------------------------------+
 //| ИНИЦИАЛИЗАЦИЯ СОВЕТНИКА v2.0                                    |
@@ -33,17 +38,11 @@ int OnInit() {
         Print("========================================");
         Print("    РЕЖИМ ОПТИМИЗАЦИИ АКТИВЕН v2.0");
         Print("========================================");
-        Print("Счет: ", AccountNumber());
-        Print("Символ: ", Symbol());
-        Print("MagicNumber: ", MagicNumber);
-        Print("========================================");
         
-        //--- В режиме оптимизации НЕ проверяем лицензии
         g_LicenseState = LICENSE_VALID;
         g_LicenseActivated = true;
         g_LicenseMessage = "Режим оптимизации";
         
-        //--- Инициализация ТОЛЬКО из входных параметров
         g_BotEnabled = EnableTrading;
         g_TradeDirection = TradeDirection;
         g_UseImpulse = UseImpulse;
@@ -59,27 +58,14 @@ int OnInit() {
         g_EstimatedCommissionPerLot = EstimatedCommissionPerLot;
         g_SlippagePercent = SlippagePercent;
         
-        //--- Проверка корректности параметров
         if(g_FirstLot < MarketInfo(Symbol(), MODE_MINLOT)) {
             Print("ОШИБКА: Начальный лот меньше минимального!");
             return(INIT_PARAMETERS_INCORRECT);
         }
         
-        //--- Инициализация структур серий
         ResetSeriesInfo(g_BuySeries);
         ResetSeriesInfo(g_SellSeries);
-        
-        //--- Определение начального тренда
         DetectInitialTrend();
-        
-        Print("Параметры оптимизации:");
-        Print("- FirstLot: ", g_FirstLot);
-        Print("- MartinCoeff: ", g_MartinCoeff);
-        Print("- GridStep%: ", g_GridStepPercent);
-        Print("- BasketProfit%: ", g_BasketProfitPercent);
-        Print("- MaxOrdersBuy: ", g_MaxOrdersBuy);
-        Print("- MaxOrdersSell: ", g_MaxOrdersSell);
-        Print("========================================");
         
         return(INIT_SUCCEEDED);
     }
@@ -100,9 +86,6 @@ int OnInit() {
     //--- Проверка режима тестера
     if(IsTesting() || IsVisualMode()) {
         Print("🔧 РЕЖИМ ТЕСТЕРА СТРАТЕГИЙ АКТИВЕН");
-        Print("Лицензия автоматически валидна в тестере");
-        
-        //--- В тестере тоже используем тестовую лицензию
         g_LicenseState = LICENSE_VALID;
         g_LicenseActivated = true;
         g_LicenseMessage = "Тестовый режим";
@@ -113,35 +96,26 @@ int OnInit() {
         ChartSetInteger(0, CHART_EVENT_OBJECT_CREATE, true);
         ChartSetInteger(0, CHART_EVENT_OBJECT_DELETE, true);
         
-        //--- Получаем лицензионный ключ из ЛОКАЛЬНОГО хранилища
-        string licenseKey = GetLicenseKeyLocal();  // НОВАЯ ФУНКЦИЯ!
+        string licenseKey = GetLicenseKeyLocal();
         
-        //--- Если ключа нет - показываем диалог для ввода
         if(StringLen(licenseKey) == 0) {
-            Print("❗ Лицензионный ключ не найден в локальном хранилище");
-            Print("➜ Открываем диалог для ввода ключа...");
-            
+            Print("❗ Лицензионный ключ не найден");
             ShowLicenseDialog();
             g_BotEnabled = false;
             return(INIT_SUCCEEDED);
         }
         
-        //--- Если ключ найден - проверяем
-        Print("✓ Найден локально сохраненный ключ");
-        Print("➜ Проверка лицензии на сервере...");
-        
+        Print("✓ Найден сохраненный ключ");
         if(!InitializeLicense(licenseKey)) {
             Print("❌ ОШИБКА: ", g_LicenseMessage);
-            Alert("Лицензия недействительна!\n\n", g_LicenseMessage, "\n\nПожалуйста, введите новый ключ.");
-            
+            Alert("Лицензия недействительна!\n\n", g_LicenseMessage);
             ClearAllLicenseData();
             ShowLicenseDialog();
             g_BotEnabled = false;
-            
             return(INIT_SUCCEEDED);
         }
         
-        Print("✅ Лицензия активна: ", GetLicenseStatusText());
+        Print("✅ Лицензия активна");
     }
     
     //--- Инициализация переменных из входных параметров
@@ -159,85 +133,91 @@ int OnInit() {
     g_IncludeCommissionSwap = IncludeCommissionSwap;
     g_EstimatedCommissionPerLot = EstimatedCommissionPerLot;
     g_SlippagePercent = SlippagePercent;
-    
-    //--- Устанавливаем позицию панели из входных параметров
     g_PanelPosX = PanelX;
     g_PanelPosY = PanelY;
     
-    //--- Проверка корректности параметров
     if(g_FirstLot < MarketInfo(Symbol(), MODE_MINLOT)) {
         Alert("Начальный лот меньше минимального!");
         return(INIT_PARAMETERS_INCORRECT);
     }
     
-    //--- Инициализация структур серий
     ResetSeriesInfo(g_BuySeries);
     ResetSeriesInfo(g_SellSeries);
     
     //--- НОВАЯ СИСТЕМА: Загрузка настроек из локального хранилища
     if(!IsTesting() && !IsOptimization()) {
-        // Проверяем наличие открытых ордеров
         bool hasOrders = HasOurOrders();
         
-        if(hasOrders) {
+        // ПРОБЛЕМА 5: Проверяем флаг изменения параметров
+        if(g_WasParametersChange) {
+            Print("📝 Обнаружено изменение параметров через F7");
+            Print("📝 Применяем НОВЫЕ входные параметры и обновляем панель");
+            
+            // ВАЖНО: НЕ загружаем старые настройки из файла
+            // Глобальные переменные уже установлены из входных параметров выше
+            
+            // Сохраняем новые значения в файл для последующих запусков
+            SavePanelSettings();
+            
+            // Сбрасываем флаг
+            g_WasParametersChange = false;
+            
+            Print("✅ Новые параметры сохранены:");
+            Print("   MaxOrdersBuy: ", g_MaxOrdersBuy);
+            Print("   MaxOrdersSell: ", g_MaxOrdersSell);
+            Print("   BasketProfitPercent: ", g_BasketProfitPercent);
+            Print("   TradeDirection: ", g_TradeDirection);
+            
+            // При создании панели она отобразит новые значения из g_ переменных
+        }
+        else if(hasOrders) {
             Print("📁 Обнаружены открытые ордера - режим восстановления");
-            // При наличии ордеров пытаемся загрузить настройки
             if(LoadPanelSettings()) {
                 Print("✅ Настройки восстановлены из локального хранилища");
+                // ПРОБЛЕМА 3: Восстанавливаем balanceAtStart для активных серий
+                RecalculateSeriesBalance();
             } else {
                 Print("⚠️ Используем входные параметры для управления ордерами");
-                g_BotEnabled = true; // Включаем робота при наличии ордеров
+                g_BotEnabled = true;
+                // ПРОБЛЕМА 3: Устанавливаем текущий баланс как стартовый
+                if(g_BuySeries.active) g_BuySeries.balanceAtStart = AccountBalance();
+                if(g_SellSeries.active) g_SellSeries.balanceAtStart = AccountBalance();
             }
         } else {
-            // Нет ордеров - пробуем загрузить сохраненные настройки
             if(LoadPanelSettings()) {
                 Print("📁 Загружены сохраненные настройки для ", Symbol());
             } else {
-                Print("📁 Первый запуск на паре ", Symbol(), " - используем входные параметры");
+                Print("📁 Первый запуск на паре ", Symbol());
                 g_BotEnabled = EnableTrading;
-                // Сохраняем для будущего
+                // ПРОБЛЕМА 1: Сохраняем настройки после первого запуска
                 SavePanelSettings();
             }
         }
         
-        // Загружаем состояние робота
         LoadRobotState();
     }
     
-    //--- Определение начального тренда
     DetectInitialTrend();
     
-    //--- Создание интерактивной панели управления (НЕ при оптимизации)
     if(ShowPanel && !IsOptimization()) {
         Print("Создание панели управления v2.0...");
         CreateInteractivePanel();
+        
+        // После создания панели, если были изменены параметры - обновляем отображение
+        if(g_WasParametersChange) {
+            RefreshPanelValues();
+        }
+        
         if(!IsTestMode()) {
             ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);
         }
-    } else if(IsOptimization()) {
-        Print("Панель отключена в режиме оптимизации");
-    } else {
-        Print("Панель управления отключена в настройках");
     }
     
     Print("========================================");
     Print("✅ СОВЕТНИК v2.0 ГОТОВ К РАБОТЕ");
-    Print("📁 Локальное хранение активно");
     Print("Робот: ", g_BotEnabled ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН");
     Print("Направление: ", g_TradeDirection == TRADE_BOTH ? "BOTH" : 
           (g_TradeDirection == TRADE_BUY_ONLY ? "BUY ONLY" : "SELL ONLY"));
-    Print("Импульс: ", g_UseImpulse ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН");
-    Print("Тренд при старте: ", g_TrendState == TREND_BUY ? "BUY ↑" : 
-          (g_TrendState == TREND_SELL ? "SELL ↓" : "НЕ ОПРЕДЕЛЕН"));
-    
-    if(IsOptimization()) {
-        Print("🔧 РЕЖИМ ОПТИМИЗАЦИИ: Панель и лицензия отключены");
-    } else if(IsTestMode()) {
-        Print("🔧 РЕЖИМ ТЕСТЕРА: Лицензия не проверяется");
-    } else {
-        Print("📅 Проверка лицензии: раз в сутки");
-        Print("💓 Heartbeat: раз в 12 часов");
-    }
     Print("========================================");
     
     return(INIT_SUCCEEDED);
@@ -247,14 +227,27 @@ int OnInit() {
 //| ДЕИНИЦИАЛИЗАЦИЯ v2.0                                           |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason) {
-    //--- В режиме оптимизации минимальная деинициализация
     if(IsOptimization()) {
         return;
     }
     
-    //--- НОВАЯ СИСТЕМА: Сохранение в локальное хранилище
+    // ПРОБЛЕМА 5: Обработка изменения параметров через F7
+    if(reason == REASON_PARAMETERS) {
+        Print("🔄 Деинициализация: изменение параметров");
+        // Устанавливаем специальный флаг в файл состояния
+        SaveParametersChangeFlag();
+        // НЕ показываем алерт об аварийном завершении
+        // НЕ сохраняем настройки - будем использовать новые
+        DeletePanel();
+        if(g_LicenseDialogOpen) {
+            CloseLicenseDialog();
+        }
+        DeleteVisualObjects();
+        return;
+    }
+    
+    // Обычная деинициализация
     if(!IsTestMode() && !IsOptimization()) {
-        // Сохраняем только если не было чистого закрытия
         if(!g_IsCleanShutdown) {
             SaveRobotState();
             SavePanelSettings();
@@ -262,15 +255,10 @@ void OnDeinit(const int reason) {
         }
     }
     
-    //--- Удаление панели
     DeletePanel();
-    
-    //--- Удаление диалога лицензии если открыт
     if(g_LicenseDialogOpen) {
         CloseLicenseDialog();
     }
-    
-    //--- Удаление визуальных объектов
     DeleteVisualObjects();
     
     string reasonText = "";
@@ -297,26 +285,13 @@ void OnDeinit(const int reason) {
 //| ОСНОВНАЯ ФУНКЦИЯ ТИКА v2.0                                      |
 //+------------------------------------------------------------------+
 void OnTick() {
-    //--- В РЕЖИМЕ ОПТИМИЗАЦИИ - УПРОЩЕННАЯ ЛОГИКА
     if(IsOptimization()) {
-        //--- НЕ проверяем лицензии
-        //--- НЕ обновляем панель
-        //--- НЕ работаем с файлами
+        if(!g_BotEnabled) return;
         
-        //--- Проверка, включен ли робот
-        if(!g_BotEnabled) {
-            return;
-        }
-        
-        //--- Обновление состояния серий
         UpdateSeriesInfo();
-        
-        //--- Обновление статистики (без визуализации)
         UpdateStatistics();
         
-        //--- ТОРГОВАЯ ЛОГИКА
         if(g_UseImpulse) {
-            //--- Режим с импульсом
             static datetime lastTrendBar = 0;
             datetime currentTrendBar = iTime(Symbol(), TrendTimeframe, 0);
             if(lastTrendBar != currentTrendBar) {
@@ -330,96 +305,72 @@ void OnTick() {
                 lastImpulseBar = currentImpulseBar;
                 CheckImpulseSignal();
             }
-        }
-        else {
-            //--- Режим без импульса
+        } else {
             static datetime lastTrendBarNoImpulse = 0;
             datetime currentTrendBarNoImpulse = iTime(Symbol(), TrendTimeframe, 0);
             if(lastTrendBarNoImpulse != currentTrendBarNoImpulse) {
                 lastTrendBarNoImpulse = currentTrendBarNoImpulse;
                 UpdateTrend();
             }
-            
             CheckEntryWithoutImpulse();
         }
         
-        //--- Управление позициями
         ManagePositions();
-        
-        return; // Выходим, не выполняя остальной код
+        return;
     }
     
-    //--- ОБЫЧНЫЙ РЕЖИМ (НЕ ОПТИМИЗАЦИЯ)
-    
-    //--- НОВАЯ СИСТЕМА: Периодическое сохранение состояния
+    //--- ОБЫЧНЫЙ РЕЖИМ
     if(!IsTestMode()) {
         PeriodicStateSave();
     }
     
-    //--- В ТЕСТЕРЕ НЕ ПРОВЕРЯЕМ ДИАЛОГ И ЛИЦЕНЗИЮ
     if(!IsTestMode()) {
-        //--- Если диалог лицензии открыт - ждем ввода ключа
-        if(g_LicenseDialogOpen) {
-            return;
-        }
+        if(g_LicenseDialogOpen) return;
         
-        //--- Проверка лицензии РАЗ В СУТКИ
+        // ПРОБЛЕМА 4: Убираем лишнее логирование
         static datetime lastLicenseCheck = 0;
         if(TimeCurrent() - lastLicenseCheck > 86400) {
             lastLicenseCheck = TimeCurrent();
-            
-            Print("📅 Ежедневная проверка лицензии...");
             
             if(!CheckLicense()) {
                 g_BotEnabled = false;
                 
                 if(g_LicenseState == LICENSE_INVALID && 
-                   (StringFind(g_LicenseMessage, "удален") >= 0 || StringFind(g_LicenseMessage, "не найден") >= 0)) {
+                   (StringFind(g_LicenseMessage, "удален") >= 0 || 
+                    StringFind(g_LicenseMessage, "не найден") >= 0)) {
                     Alert("Лицензия удалена с сервера!\nВведите новый ключ.");
                     ClearAllLicenseData();
                     ShowLicenseDialog();
                 } else {
-                    Alert("❌ Лицензия недействительна! Торговля остановлена.\n" + g_LicenseMessage);
+                    Alert("❌ Лицензия недействительна!\n" + g_LicenseMessage);
                 }
-                
-                Print("❌ Лицензия недействительна: ", g_LicenseMessage);
-            } else {
-                Print("✅ Лицензия проверена: ", GetLicenseStatusText());
             }
         }
         
-        //--- Отправляем heartbeat раз в 12 ЧАСОВ
+        // ПРОБЛЕМА 4: SendHeartbeat() теперь работает молча
         static datetime lastHeartbeat = 0;
         if(TimeCurrent() - lastHeartbeat > 43200) {
             lastHeartbeat = TimeCurrent();
             if(IsLicenseValidForTrading()) {
-                SendHeartbeat();
+                SendHeartbeatSilent();  // Используем тихую версию
             }
         }
     }
     
-    //--- Сбрасываем флаг клика на кнопку
     g_ButtonClicked = false;
     
-    //--- Проверка, включен ли робот И лицензия валидна
     if(!g_BotEnabled || !IsLicenseValidForTrading()) {
         if(ShowPanel) UpdateInteractivePanel();
-        
         if(!IsLicenseValidForTrading() && (g_BuySeries.active || g_SellSeries.active)) {
             ManagePositions();
         }
         return;
     }
     
-    //--- Обновление состояния серий
     UpdateSeriesInfo();
-    
-    //--- Обновление статистики
     UpdateStatistics();
     
-    //--- ТОРГОВАЯ ЛОГИКА
     if(g_UseImpulse) {
-        //--- Режим с импульсом
         static datetime lastTrendBar = 0;
         datetime currentTrendBar = iTime(Symbol(), TrendTimeframe, 0);
         if(lastTrendBar != currentTrendBar) {
@@ -433,28 +384,22 @@ void OnTick() {
             lastImpulseBar = currentImpulseBar;
             CheckImpulseSignal();
         }
-    }
-    else {
-        //--- Режим без импульса
+    } else {
         static datetime lastTrendBarNoImpulse = 0;
         datetime currentTrendBarNoImpulse = iTime(Symbol(), TrendTimeframe, 0);
         if(lastTrendBarNoImpulse != currentTrendBarNoImpulse) {
             lastTrendBarNoImpulse = currentTrendBarNoImpulse;
             UpdateTrend();
         }
-        
         CheckEntryWithoutImpulse();
     }
     
-    //--- Управление существующими позициями
     ManagePositions();
     
-    //--- Обновление визуализации TP
     if(ShowVisualObjects && ShowTPLevels) {
         DrawTPLevels();
     }
     
-    //--- Обновление панели
     if(ShowPanel) {
         UpdateInteractivePanel();
     }
@@ -464,29 +409,21 @@ void OnTick() {
 //| ПРОВЕРКА ВХОДА БЕЗ ИМПУЛЬСА                                     |
 //+------------------------------------------------------------------+
 void CheckEntryWithoutImpulse() {
-    //--- Проверяем направление торговли
     bool canBuy = (g_TradeDirection == TRADE_BOTH || g_TradeDirection == TRADE_BUY_ONLY);
     bool canSell = (g_TradeDirection == TRADE_BOTH || g_TradeDirection == TRADE_SELL_ONLY);
     
-    //--- Проверка для BUY
+    // ПРОБЛЕМА 4: Убираем лишние выводы
     if(g_TrendState == TREND_BUY && canBuy) {
         if(!HasActiveOrders(OP_BUY)) {
             if(CheckFilters()) {
-                if(!IsOptimization()) {
-                    Print("💫 Вход по тренду BUY (импульс ВЫКЛ) - открываем!");
-                }
                 OpenPosition(OP_BUY);
             }
         }
     }
     
-    //--- Проверка для SELL
     if(g_TrendState == TREND_SELL && canSell) {
         if(!HasActiveOrders(OP_SELL)) {
             if(CheckFilters()) {
-                if(!IsOptimization()) {
-                    Print("💫 Вход по тренду SELL (импульс ВЫКЛ) - открываем!");
-                }
                 OpenPosition(OP_SELL);
             }
         }
@@ -497,37 +434,32 @@ void CheckEntryWithoutImpulse() {
 //| ОБРАБОТКА СОБЫТИЙ ГРАФИКА v2.0                                  |
 //+------------------------------------------------------------------+
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam) {
-    //--- В режиме оптимизации НЕ обрабатываем события
     if(IsOptimization()) return;
-    
-    //--- В тестере тоже не обрабатываем события
     if(IsTestMode()) return;
     
-    //--- Обработка диалога лицензии (приоритет)
     if(g_LicenseDialogOpen) {
         if(id == CHARTEVENT_OBJECT_CLICK) {
             if(HandleLicenseDialogClick(sparam) == true) {
-                //--- Если ключ был введен, проверяем его
                 if(StringLen(g_EnteredLicenseKey) > 0) {
-                    Print("Лицензионный ключ введен, проверяем...");
+                    Print("Проверка лицензионного ключа...");
                     
                     if(InitializeLicense(g_EnteredLicenseKey)) {
                         Print("✅ Лицензия активирована успешно!");
                         Alert("Лицензия активирована!\n\nСоветник готов к работе.");
                         
-                        // НОВАЯ СИСТЕМА: Сохраняем ключ локально
                         SaveLicenseKeyLocal(g_EnteredLicenseKey);
-                        
                         g_BotEnabled = EnableTrading;
                         g_TradeDirection = TradeDirection;
-                        LoadPanelSettings();  // Используем новую функцию
+                        
+                        // ПРОБЛЕМА 1: Сохраняем настройки после активации
+                        SavePanelSettings();
+                        
                         DetectInitialTrend();
                         if(ShowPanel) {
                             CreateInteractivePanel();
                         }
                     } else {
                         Alert("Ошибка активации лицензии:\n\n" + g_LicenseMessage);
-                        Print("❌ Ошибка активации: ", g_LicenseMessage);
                         ShowLicenseDialog();
                     }
                 }
@@ -537,20 +469,36 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
         return;
     }
     
-    //--- Обработка изменения полей ввода
+    // ПРОБЛЕМА 2: Обработка изменения процента профита
     if(id == CHARTEVENT_OBJECT_ENDEDIT) {
         if(StringFind(sparam, PANEL_PREFIX + "Edit") == 0) {
-            // Обработка полей ввода
-            if(sparam == PANEL_PREFIX + "EditMaxBuy") {
+            if(sparam == PANEL_PREFIX + "EditProfit") {
+                string value = ObjectGetString(0, sparam, OBJPROP_TEXT);
+                double newProfit = StringToDouble(value);
+                if(newProfit > 0 && newProfit <= 10) {
+                    g_BasketProfitPercent = newProfit;
+                    Print("Профит % изменен на: ", g_BasketProfitPercent);
+                    SavePanelSettings();
+                    
+                    // ПРОБЛЕМА 2: Обновляем TP для всех активных серий
+                    if(g_BuySeries.active || g_SellSeries.active) {
+                        UpdateCombinedPhysicalTP();
+                    }
+                } else {
+                    ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(g_BasketProfitPercent, 2));
+                    Print("Некорректное значение профита: ", value);
+                }
+            }
+            // Остальные обработчики полей ввода...
+            else if(sparam == PANEL_PREFIX + "EditMaxBuy") {
                 string value = ObjectGetString(0, sparam, OBJPROP_TEXT);
                 int newMax = (int)StringToInteger(value);
                 if(newMax > 0 && newMax <= 100) {
                     g_MaxOrdersBuy = newMax;
                     Print("Макс Buy изменен на: ", g_MaxOrdersBuy);
-                    SavePanelSettings();  // Используем новую функцию
+                    SavePanelSettings();
                 } else {
                     ObjectSetString(0, sparam, OBJPROP_TEXT, IntegerToString(g_MaxOrdersBuy));
-                    Print("Некорректное значение макс Buy: ", value);
                 }
             }
             else if(sparam == PANEL_PREFIX + "EditMaxSell") {
@@ -559,22 +507,9 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
                 if(newMax > 0 && newMax <= 100) {
                     g_MaxOrdersSell = newMax;
                     Print("Макс Sell изменен на: ", g_MaxOrdersSell);
-                    SavePanelSettings();  // Используем новую функцию
+                    SavePanelSettings();
                 } else {
                     ObjectSetString(0, sparam, OBJPROP_TEXT, IntegerToString(g_MaxOrdersSell));
-                    Print("Некорректное значение макс Sell: ", value);
-                }
-            }
-            else if(sparam == PANEL_PREFIX + "EditProfit") {
-                string value = ObjectGetString(0, sparam, OBJPROP_TEXT);
-                double newProfit = StringToDouble(value);
-                if(newProfit > 0 && newProfit <= 10) {
-                    g_BasketProfitPercent = newProfit;
-                    Print("Профит % изменен на: ", g_BasketProfitPercent);
-                    SavePanelSettings();  // Используем новую функцию
-                } else {
-                    ObjectSetString(0, sparam, OBJPROP_TEXT, DoubleToString(g_BasketProfitPercent, 2));
-                    Print("Некорректное значение профита: ", value);
                 }
             }
             else if(sparam == PANEL_PREFIX + "EditBasketN") {
@@ -583,10 +518,9 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
                 if(newN > 0 && newN <= 20) {
                     g_BasketAfterN = newN;
                     Print("Корзина после N изменена на: ", g_BasketAfterN);
-                    SavePanelSettings();  // Используем новую функцию
+                    SavePanelSettings();
                 } else {
                     ObjectSetString(0, sparam, OBJPROP_TEXT, IntegerToString(g_BasketAfterN));
-                    Print("Некорректное значение N: ", value);
                 }
             }
             ChartRedraw();
@@ -594,7 +528,6 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
         }
     }
     
-    //--- Обработка нажатия кнопок панели
     if(id == CHARTEVENT_OBJECT_CLICK) {
         if(StringFind(sparam, PANEL_PREFIX) == 0) {
             HandleButtonClick(sparam);
@@ -603,7 +536,6 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
         }
     }
     
-    //--- Обработка перетаскивания панели
     if(id == CHARTEVENT_MOUSE_MOVE) {
         int mouseX = (int)lparam;
         int mouseY = (int)dparam;
@@ -647,12 +579,118 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
                 newY = MathMax(0, newY);
                 
                 MovePanel(newX, newY);
-                
-                // Сохраняем новую позицию панели
                 SavePanelSettings();
             }
         } else {
             g_PanelDragging = false;
         }
     }
+}
+
+//+------------------------------------------------------------------+
+//| НОВАЯ ФУНКЦИЯ: Пересчет balanceAtStart для активных серий       |
+//+------------------------------------------------------------------+
+void RecalculateSeriesBalance() {
+    double currentBalance = AccountBalance();
+    
+    // ПРОБЛЕМА 3: Восстанавливаем balanceAtStart
+    if(g_BuySeries.active && g_BuySeries.count > 0) {
+        if(g_BuySeries.balanceAtStart <= 0) {
+            g_BuySeries.balanceAtStart = currentBalance;
+            Print("✅ Восстановлен balanceAtStart для BUY серии: ", g_BuySeries.balanceAtStart);
+        }
+    }
+    
+    if(g_SellSeries.active && g_SellSeries.count > 0) {
+        if(g_SellSeries.balanceAtStart <= 0) {
+            g_SellSeries.balanceAtStart = currentBalance;
+            Print("✅ Восстановлен balanceAtStart для SELL серии: ", g_SellSeries.balanceAtStart);
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| НОВАЯ ФУНКЦИЯ: Тихая отправка heartbeat                         |
+//+------------------------------------------------------------------+
+void SendHeartbeatSilent() {
+    // ПРОБЛЕМА 4: Отправляем heartbeat без логирования
+    if(IsTestMode()) return;
+    if(g_LicenseState != LICENSE_VALID && !g_LicenseActivated) return;
+    
+    string accountType = GetAccountType();
+    double balance = AccountBalance();
+    double equity = AccountEquity();
+    double profit = equity - balance;
+    
+    string postData = "{";
+    postData = postData + "\"key\":\"" + g_LicenseKey + "\",";
+    postData = postData + "\"account\":\"" + IntegerToString(AccountNumber()) + "\",";
+    postData = postData + "\"broker\":\"" + AccountCompany() + "\",";
+    postData = postData + "\"robot_name\":\"" + ROBOT_NAME + "\",";
+    postData = postData + "\"version\":\"" + ROBOT_VERSION + "\",";
+    postData = postData + "\"balance\":" + DoubleToString(balance, 2) + ",";
+    postData = postData + "\"equity\":" + DoubleToString(equity, 2) + ",";
+    postData = postData + "\"profit\":" + DoubleToString(profit, 2) + ",";
+    postData = postData + "\"account_type\":\"" + accountType + "\",";
+    postData = postData + "\"robot_state\":\"" + (g_BotEnabled ? "active" : "paused") + "\",";
+    postData = postData + "\"open_buy\":" + IntegerToString(g_BuySeries.count) + ",";
+    postData = postData + "\"open_sell\":" + IntegerToString(g_SellSeries.count);
+    postData = postData + "}";
+    
+    // Отправляем молча
+    SendHTTPRequest("/heartbeat", postData);
+}
+
+//+------------------------------------------------------------------+
+//| ОБНОВИТЬ ЗНАЧЕНИЯ НА ПАНЕЛИ ПОСЛЕ ИЗМЕНЕНИЯ ПАРАМЕТРОВ         |
+//+------------------------------------------------------------------+
+void RefreshPanelValues() {
+    // Обновляем поля ввода с текущими значениями
+    ObjectSetString(0, PANEL_PREFIX + "EditMaxBuy", OBJPROP_TEXT, IntegerToString(g_MaxOrdersBuy));
+    ObjectSetString(0, PANEL_PREFIX + "EditMaxSell", OBJPROP_TEXT, IntegerToString(g_MaxOrdersSell));
+    ObjectSetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT, DoubleToString(g_BasketProfitPercent, 2));
+    ObjectSetString(0, PANEL_PREFIX + "EditBasketN", OBJPROP_TEXT, IntegerToString(g_BasketAfterN));
+    
+    // Обновляем подсветку кнопок направления торговли
+    if(g_TradeDirection == TRADE_BUY_ONLY) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBuy", OBJPROP_BGCOLOR, C'46,125,50');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'66,66,66');
+    }
+    else if(g_TradeDirection == TRADE_SELL_ONLY) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBuy", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'198,40,40');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'66,66,66');
+    }
+    else if(g_TradeDirection == TRADE_BOTH) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBuy", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'33,150,243');
+    }
+    
+    // Обновляем подсветку кнопок типа корзины
+    if(g_BasketType == BASKET_NONE) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketNone", OBJPROP_BGCOLOR, C'46,125,50');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'66,66,66');
+    }
+    else if(g_BasketType == BASKET_IMMEDIATE) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketNone", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'46,125,50');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'66,66,66');
+    }
+    else if(g_BasketType == BASKET_AFTER_N) {
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketNone", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'66,66,66');
+        ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'46,125,50');
+    }
+    
+    // Обновляем кнопку Start/Stop
+    ObjectSetString(0, PANEL_PREFIX + "BtnStartStop", OBJPROP_TEXT, 
+                   g_BotEnabled ? "STOP" : "START");
+    ObjectSetInteger(0, PANEL_PREFIX + "BtnStartStop", OBJPROP_BGCOLOR, 
+                    g_BotEnabled ? C'198,40,40' : C'46,125,50');
+    
+    Print("✅ Значения на панели синхронизированы с новыми параметрами");
+    ChartRedraw();
 }
