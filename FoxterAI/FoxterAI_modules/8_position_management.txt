@@ -216,7 +216,7 @@ void UpdatePhysicalTP(int orderType) {
 //+------------------------------------------------------------------+
 void UpdateCombinedPhysicalTP() {
     //--- Рассчитываем целевую прибыль
-    double targetProfit = AccountBalance() * (g_BasketProfitPercent / 100.0);
+    double targetProfit = 1000.0 * (g_BasketProfitPercent / 100.0);
     double pointValue = MarketInfo(Symbol(), MODE_TICKVALUE);
     double tickSize = MarketInfo(Symbol(), MODE_TICKSIZE);
     
@@ -336,7 +336,7 @@ void ManageSingleSeriesTP(int orderType) {
     }
     
     //--- Целевая прибыль
-    double targetProfit = seriesBalanceAtStart * (g_BasketProfitPercent / 100.0);
+    double targetProfit = 1000.0 * (g_BasketProfitPercent / 100.0);
     
     //--- Проверяем условия закрытия (БЕЗ ПРОВЕРКИ ТРЕНДА!)
     if(ordersCount > 0) {
@@ -369,7 +369,7 @@ void ManageCombinedBasket() {
     }
     
     //--- Целевая прибыль
-    double targetProfit = AccountBalance() * (g_BasketProfitPercent / 100.0);
+    double targetProfit = 1000.0 * (g_BasketProfitPercent / 100.0);
     
     //--- Проверяем достижение цели (БЕЗ ПРОВЕРКИ ТРЕНДА!)
     if(totalProfit >= targetProfit && totalOrders > 0) {

@@ -55,9 +55,9 @@ void OpenPosition(int orderType) {
         
         //--- Сохраняем баланс на момент открытия серии
         if(orderType == OP_BUY) {
-            g_BuySeries.balanceAtStart = AccountBalance();
+            g_BuySeries.balanceAtStart = 1000.0;
         } else {
-            g_SellSeries.balanceAtStart = AccountBalance();
+            g_SellSeries.balanceAtStart = 1000.0;
         }
     }
     
@@ -110,7 +110,7 @@ void SetTakeProfit(int ticket, int orderType) {
     //--- Выбираем способ расчета TP
     if(UseDepositPercentTP) {
         //--- Расчет TP от процента депозита
-        double targetProfit = AccountBalance() * (FirstTPDepositPercent / 100.0);
+        double targetProfit = 1000.0 * (FirstTPDepositPercent / 100.0);
         double pointValue = MarketInfo(Symbol(), MODE_TICKVALUE);
         double tickSize = MarketInfo(Symbol(), MODE_TICKSIZE);
         
@@ -224,7 +224,7 @@ double CalculateSeriesTP(int orderType) {
     if(breakeven == 0) return 0;
     
     //--- Рассчитываем необходимое движение для достижения целевой прибыли
-    double targetProfit = seriesBalanceAtStart * (g_BasketProfitPercent / 100.0);
+    double targetProfit = 1000.0 * (g_BasketProfitPercent / 100.0);
     double pointValue = MarketInfo(Symbol(), MODE_TICKVALUE);
     double tickSize = MarketInfo(Symbol(), MODE_TICKSIZE);
     
