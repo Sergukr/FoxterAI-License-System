@@ -1,6 +1,7 @@
 //+------------------------------------------------------------------+
-//|                                        11_panel_handlers.mqh |
-//|                 Обработчики событий панели для FoxterAI v1.6    |
+//|                                        11_panel_handlers.mqh    |
+//|                 Обработчики событий панели для FoxterAI v2.0    |
+//|                   С ОБРАБОТЧИКОМ КНОПКИ "ЗАКРЫТЬ РОБОТА"        |
 //+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
@@ -9,6 +10,31 @@
 void HandleButtonClick(string buttonName) {
     //--- Устанавливаем флаг клика на кнопку для блокировки перетаскивания
     g_ButtonClicked = true;
+    
+    //--- НОВАЯ КНОПКА: ЗАКРЫТЬ РОБОТА
+    if(buttonName == PANEL_PREFIX + "BtnCloseRobot") {
+        // Показываем диалог подтверждения
+        int result = MessageBox("ВНИМАНИЕ!\n\n" +
+                               "Вы действительно хотите закрыть робота?\n\n" +
+                               "Это действие:\n" +
+                               "• Закроет все открытые позиции\n" +
+                               "• Удалит настройки для текущей пары\n" +
+                               "• Завершит работу эксперта\n\n" +
+                               "При следующем запуске робот начнет с настроек по умолчанию.\n\n" +
+                               "Продолжить?",
+                               "FoxterAI v2.0 - Подтверждение закрытия",
+                               MB_YESNO | MB_ICONWARNING);
+        
+        if(result == IDYES) {
+            Print("🔴 Пользователь подтвердил закрытие робота");
+            // Вызываем функцию чистого закрытия из storage_manager
+            CleanShutdownRobot();
+        } else {
+            Print("⚠️ Закрытие робота отменено");
+        }
+        ChartRedraw();
+        return;
+    }
     
     //--- START/STOP
     if(buttonName == PANEL_PREFIX + "BtnStartStop") {
@@ -19,7 +45,7 @@ void HandleButtonClick(string buttonName) {
         ObjectSetString(0, buttonName, OBJPROP_TEXT, g_BotEnabled ? "STOP" : "START");
         ObjectSetInteger(0, buttonName, OBJPROP_BGCOLOR, g_BotEnabled ? C'198,40,40' : C'46,125,50');
         
-        SaveSettings();
+        SavePanelSettings();  // Используем новую функцию сохранения
         ChartRedraw();
     }
     
@@ -30,7 +56,7 @@ void HandleButtonClick(string buttonName) {
         ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'66,66,66');
         ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'66,66,66');
         Print("Направление торговли: только BUY");
-        SaveSettings();
+        SavePanelSettings();  // Используем новую функцию
         ChartRedraw();
     }
     else if(buttonName == PANEL_PREFIX + "BtnSell") {
@@ -39,7 +65,7 @@ void HandleButtonClick(string buttonName) {
         ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'198,40,40');
         ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'66,66,66');
         Print("Направление торговли: только SELL");
-        SaveSettings();
+        SavePanelSettings();  // Используем новую функцию
         ChartRedraw();
     }
     else if(buttonName == PANEL_PREFIX + "BtnBoth") {
@@ -48,7 +74,7 @@ void HandleButtonClick(string buttonName) {
         ObjectSetInteger(0, PANEL_PREFIX + "BtnSell", OBJPROP_BGCOLOR, C'66,66,66');
         ObjectSetInteger(0, PANEL_PREFIX + "BtnBoth", OBJPROP_BGCOLOR, C'33,150,243');
         Print("Направление торговли: обе стороны");
-        SaveSettings();
+        SavePanelSettings();  // Используем новую функцию
         ChartRedraw();
     }
     
@@ -59,7 +85,7 @@ void HandleButtonClick(string buttonName) {
         if(newMax > 0 && newMax <= 100) {
             g_MaxOrdersBuy = newMax;
             Print("Макс Buy изменен на: ", g_MaxOrdersBuy);
-            SaveSettings();
+            SavePanelSettings();  // Используем новую функцию
         } else {
             Print("Некорректное значение макс Buy: ", value);
             ObjectSetString(0, PANEL_PREFIX + "EditMaxBuy", OBJPROP_TEXT, IntegerToString(g_MaxOrdersBuy));
@@ -74,7 +100,7 @@ void HandleButtonClick(string buttonName) {
         if(newMax > 0 && newMax <= 100) {
             g_MaxOrdersSell = newMax;
             Print("Макс Sell изменен на: ", g_MaxOrdersSell);
-            SaveSettings();
+            SavePanelSettings();  // Используем новую функцию
         } else {
             Print("Некорректное значение макс Sell: ", value);
             ObjectSetString(0, PANEL_PREFIX + "EditMaxSell", OBJPROP_TEXT, IntegerToString(g_MaxOrdersSell));
@@ -89,7 +115,7 @@ void HandleButtonClick(string buttonName) {
         if(newProfit > 0 && newProfit <= 10) {
             g_BasketProfitPercent = newProfit;
             Print("Профит % изменен на: ", g_BasketProfitPercent);
-            SaveSettings();
+            SavePanelSettings();  // Используем новую функцию
         } else {
             Print("Некорректное значение профита: ", value);
             ObjectSetString(0, PANEL_PREFIX + "EditProfit", OBJPROP_TEXT, DoubleToString(g_BasketProfitPercent, 2));
@@ -106,7 +132,7 @@ void HandleButtonClick(string buttonName) {
         ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'66,66,66');
         ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'66,66,66');
         Print("Тип корзины: без объединения");
-        SaveSettings();
+        SavePanelSettings();  // Используем новую функцию
         ChartRedraw();
     }
     else if(buttonName == PANEL_PREFIX + "BtnBasketImm") {
@@ -115,7 +141,7 @@ void HandleButtonClick(string buttonName) {
         ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'46,125,50');
         ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'66,66,66');
         Print("Тип корзины: немедленное объединение");
-        SaveSettings();
+        SavePanelSettings();  // Используем новую функцию
         ChartRedraw();
     }
     else if(buttonName == PANEL_PREFIX + "BtnBasketAfter") {
@@ -124,7 +150,7 @@ void HandleButtonClick(string buttonName) {
         ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketImm", OBJPROP_BGCOLOR, C'66,66,66');
         ObjectSetInteger(0, PANEL_PREFIX + "BtnBasketAfter", OBJPROP_BGCOLOR, C'46,125,50');
         Print("Тип корзины: после N ордеров");
-        SaveSettings();
+        SavePanelSettings();  // Используем новую функцию
         ChartRedraw();
     }
     
@@ -135,7 +161,7 @@ void HandleButtonClick(string buttonName) {
         if(newN > 0 && newN <= 20) {
             g_BasketAfterN = newN;
             Print("Корзина после N изменена на: ", g_BasketAfterN);
-            SaveSettings();
+            SavePanelSettings();  // Используем новую функцию
         } else {
             Print("Некорректное значение N: ", value);
             ObjectSetString(0, PANEL_PREFIX + "EditBasketN", OBJPROP_TEXT, IntegerToString(g_BasketAfterN));

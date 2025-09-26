@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                            9_panel_create.mqh |
-//|                     Создание панели для FoxterAI v1.6           |
-//|                         УЛУЧШЕННАЯ ВЕРСИЯ                        |
+//|                     Создание панели для FoxterAI v2.0           |
+//|                  С КНОПКОЙ "ЗАКРЫТЬ РОБОТА"                     |
 //+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
-//| СОЗДАНИЕ ИНТЕРАКТИВНОЙ ПАНЕЛИ - УЛУЧШЕННАЯ                      |
+//| СОЗДАНИЕ ИНТЕРАКТИВНОЙ ПАНЕЛИ - ВЕРСИЯ 2.0                      |
 //+------------------------------------------------------------------+
 void CreateInteractivePanel() {
     // ВАЖНО: Сначала удаляем старую панель если она есть
@@ -16,14 +16,14 @@ void CreateInteractivePanel() {
     int y = g_PanelPosY;
     int currentY = y;
     
-    Print("Создание панели на позиции: X=", x, " Y=", y);
+    Print("Создание панели v2.0 на позиции: X=", x, " Y=", y);
     
     //--- Рассчитываем DPI масштабирование
     double dpiScale = GetDPIScale();
     
     //--- Адаптивные размеры с учетом DPI (УВЕЛИЧЕНА ВЫСОТА!)
     int panelWidth = (int)(PANEL_WIDTH * dpiScale);
-    int panelHeight = (int)(420 * dpiScale);  // УВЕЛИЧЕНО с 380 до 420
+    int panelHeight = (int)(460 * dpiScale);  // УВЕЛИЧЕНО до 460 для новой кнопки
     int buttonHeight = (int)(BUTTON_HEIGHT * dpiScale);
     int editHeight = (int)(EDIT_HEIGHT * dpiScale);
     int fontSize9 = (int)(9 * dpiScale);
@@ -58,8 +58,8 @@ void CreateInteractivePanel() {
     
     currentY += (int)(5 * dpiScale);  // Небольшой отступ от верха
     
-    //--- Заголовок
-    CreateAdaptiveLabel(PANEL_PREFIX + "Title", "FoxterAI v1.6", x + marginLeft, currentY, 
+    //--- Заголовок с новой версией
+    CreateAdaptiveLabel(PANEL_PREFIX + "Title", "FoxterAI v2.0", x + marginLeft, currentY, 
                        C'212,175,55', fontSize11, dpiScale);
     
     //--- Статус лицензии рядом с заголовком
@@ -256,6 +256,29 @@ void CreateInteractivePanel() {
     CreateAdaptiveButton(PANEL_PREFIX + "BtnCloseAll", "CLOSE ALL", 
                         x + marginLeft + 2 * (closeBtnWidth + spacing), currentY, 
                         closeBtnWidth, buttonHeight, C'244,67,54', C'255,255,255', dpiScale);
+    
+    currentY += buttonHeight + (int)(10 * dpiScale);
+    CreateAdaptiveSeparator(PANEL_PREFIX + "Sep4", x + marginLeft/2, currentY, 
+                           panelWidth - marginLeft, dpiScale);
+    currentY += (int)(5 * dpiScale);
+    
+    //=== НОВЫЙ БЛОК 4: ЗАКРЫТИЕ РОБОТА ===
+    CreateAdaptiveLabel(PANEL_PREFIX + "CloseTitle", "ЗАКРЫТИЕ РОБОТА", 
+                       x + marginLeft, currentY, C'212,175,55', fontSize10, dpiScale);
+    currentY += (int)(18 * dpiScale);
+    
+    // Кнопка "ЗАКРЫТЬ РОБОТА" - фиолетовая согласно ТЗ
+    CreateAdaptiveButton(PANEL_PREFIX + "BtnCloseRobot", "🔴 ЗАКРЫТЬ РОБОТА", 
+                        x + marginLeft, currentY, 
+                        panelWidth - 2 * marginLeft, (int)(buttonHeight * 1.3), 
+                        C'156,39,176', C'255,255,255', dpiScale);  // Фиолетовая кнопка
+    
+    currentY += (int)(buttonHeight * 1.3) + (int)(5 * dpiScale);
+    
+    //--- Подпись внизу панели
+    CreateAdaptiveLabel(PANEL_PREFIX + "Footer", "📁 Локальное хранение v2.0", 
+                       x + panelWidth/2 - (int)(80 * dpiScale), currentY, 
+                       C'158,158,158', fontSize9, dpiScale);
 }
 
 //+------------------------------------------------------------------+
