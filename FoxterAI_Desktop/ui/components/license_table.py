@@ -1,7 +1,7 @@
 """
 Компонент таблицы лицензий с оптимизированными колонками
-Только необходимая информация согласно требованиям
 ПОЛНЫЙ ФАЙЛ ДЛЯ ЗАМЕНЫ: FoxterAI_Desktop/ui/components/license_table.py
+ИСПРАВЛЕНО: Теперь правильно получает и отображает equity и profit
 """
 
 import customtkinter as ctk
@@ -75,8 +75,8 @@ class LicenseTable(ctk.CTkFrame):
             'Робот',          # robot_name
             'Версия',         # robot_version
             'Баланс',         # last_balance
-            'Эквити',         # equity (пока нет в данных)
-            'Профит',         # profit (пока нет в данных)
+            'Эквити',         # last_equity
+            'Профит',         # last_profit
             'Тип',            # account_type (Real/Demo)
             'Дней',           # days_left (до окончания)
             'Статус'          # status
@@ -105,8 +105,8 @@ class LicenseTable(ctk.CTkFrame):
             'Робот': 80,      # Название робота
             'Версия': 60,     # Версия робота
             'Баланс': 100,    # Баланс счета
-            'Эквити': 100,    # Эквити (будущее)
-            'Профит': 100,    # Профит (будущее)
+            'Эквити': 100,    # Эквити
+            'Профит': 100,    # Профит
             'Тип': 60,        # Real/Demo
             'Дней': 80,       # Дней до окончания
             'Статус': 120     # Статус лицензии
@@ -187,6 +187,8 @@ class LicenseTable(ctk.CTkFrame):
         self.tree.tag_configure('blocked', foreground=DarkTheme.STATUS_BLOCKED)
         self.tree.tag_configure('created', foreground=DarkTheme.COPPER_BRONZE, font=('Inter', 10, 'italic'))
         self.tree.tag_configure('expiring', foreground=DarkTheme.STATUS_WARNING)
+        self.tree.tag_configure('profit_plus', foreground=DarkTheme.STATUS_ACTIVE)  # Зеленый для прибыли
+        self.tree.tag_configure('profit_minus', foreground=DarkTheme.STATUS_EXPIRED)  # Красный для убытка
     
     def load_licenses(self, licenses: List):
         """
@@ -248,11 +250,9 @@ class LicenseTable(ctk.CTkFrame):
         days_left = self._get_field(license, 'days_left', 999)
         status = self._get_field(license, 'status', 'unknown')
         
-        # ВАЖНО: Эквити и Профит пока недоступны в данных
-        # Сервер не сохраняет эти поля из heartbeat
-        # Показываем прочерк, пока не будет реализовано на сервере
-        equity = '-'
-        profit = '-'
+        # ИСПРАВЛЕНО: Правильно получаем эквити и профит из данных сервера
+        equity = self._get_field(license, 'last_equity', None)
+        profit = self._get_field(license, 'last_profit', None)
         
         # Проверяем и форматируем значения
         if account == 'None' or account is None or account == '':
@@ -273,6 +273,29 @@ class LicenseTable(ctk.CTkFrame):
             balance_str = f'${balance:.2f}'
         else:
             balance_str = '$0.00'
+        
+        # ИСПРАВЛЕНО: Форматируем эквити
+        if equity is not None and isinstance(equity, (int, float)):
+            if equity > 0:
+                equity_str = f'${equity:.2f}'
+            else:
+                equity_str = '$0.00'
+        else:
+            # Если данных нет - показываем прочерк
+            equity_str = '-'
+        
+        # ИСПРАВЛЕНО: Форматируем профит с цветом
+        profit_color_tag = ''
+        if profit is not None and isinstance(profit, (int, float)):
+            if profit >= 0:
+                profit_str = f'+${profit:.2f}'
+                profit_color_tag = 'profit_plus'
+            else:
+                profit_str = f'-${abs(profit):.2f}'
+                profit_color_tag = 'profit_minus'
+        else:
+            # Если данных нет - показываем прочерк
+            profit_str = '-'
         
         # Форматируем тип счета
         if account_type in ['Real', 'real', 'REAL']:
@@ -299,7 +322,7 @@ class LicenseTable(ctk.CTkFrame):
         status_display = self._get_status_display(status)
         
         # Определяем тег для строки
-        tag = self._get_status_tag(status, days_left)
+        tag = self._get_status_tag(status, days_left, profit_color_tag)
         
         # Вставляем в таблицу ТОЛЬКО НУЖНЫЕ КОЛОНКИ
         values = (
@@ -310,8 +333,8 @@ class LicenseTable(ctk.CTkFrame):
             robot,            # Робот
             version,          # Версия
             balance_str,      # Баланс
-            equity,           # Эквити (пока недоступно)
-            profit,           # Профит (пока недоступно)
+            equity_str,       # Эквити (теперь из last_equity)
+            profit_str,       # Профит (теперь из last_profit)
             type_str,         # Тип счета
             days_str,         # Дней до окончания
             status_display    # Статус
@@ -347,8 +370,12 @@ class LicenseTable(ctk.CTkFrame):
         }
         return status_map.get(status, status)
     
-    def _get_status_tag(self, status, days_left):
-        """Получить тег для статуса"""
+    def _get_status_tag(self, status, days_left, profit_tag=''):
+        """Получить тег для статуса с учетом профита"""
+        # Если есть специальный тег для профита, используем его
+        if profit_tag:
+            return profit_tag
+            
         if status == 'blocked':
             return 'blocked'
         elif status == 'expired':
@@ -500,12 +527,22 @@ class LicenseTable(ctk.CTkFrame):
         blocked = len([l for l in self.licenses if self._get_field(l, 'status') == 'blocked'])
         created = len([l for l in self.licenses if self._get_field(l, 'status') == 'created'])
         
-        # Считаем общий баланс
+        # Считаем общий баланс и эквити
         total_balance = 0
+        total_equity = 0
+        total_profit = 0
+        
         for lic in self.licenses:
             balance = self._get_field(lic, 'last_balance', 0)
+            equity = self._get_field(lic, 'last_equity', 0)
+            profit = self._get_field(lic, 'last_profit', 0)
+            
             if isinstance(balance, (int, float)):
                 total_balance += balance
+            if isinstance(equity, (int, float)):
+                total_equity += equity
+            if isinstance(profit, (int, float)):
+                total_profit += profit
         
         return {
             'total': total,
@@ -513,7 +550,9 @@ class LicenseTable(ctk.CTkFrame):
             'expired': expired,
             'blocked': blocked,
             'created': created,
-            'balance': total_balance
+            'balance': total_balance,
+            'equity': total_equity,
+            'profit': total_profit
         }
     
     def export_to_list(self) -> List[Dict]:
@@ -528,6 +567,8 @@ class LicenseTable(ctk.CTkFrame):
                 'robot_name': self._get_field(license, 'robot_name'),
                 'robot_version': self._get_field(license, 'robot_version'),
                 'last_balance': self._get_field(license, 'last_balance'),
+                'last_equity': self._get_field(license, 'last_equity'),
+                'last_profit': self._get_field(license, 'last_profit'),
                 'account_type': self._get_field(license, 'account_type'),
                 'days_left': self._get_field(license, 'days_left'),
                 'status': self._get_field(license, 'status')
