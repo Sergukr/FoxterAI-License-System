@@ -50,19 +50,20 @@ void InitializeStorage() {
 //| СОЗДАНИЕ СТРУКТУРЫ ДИРЕКТОРИЙ                                   |
 //+------------------------------------------------------------------+
 void CreateDirectoryStructure() {
-    if(!FolderCreate(STORAGE_ROOT_DIR)) {
+    // Используем встроенную функцию FolderCreate с двумя параметрами
+    if(!FolderCreate(STORAGE_ROOT_DIR, FILE_COMMON)) {
         if(!FileIsExist(STORAGE_ROOT_DIR)) {
             Print("⚠️ Не удалось создать папку: ", STORAGE_ROOT_DIR);
         }
     }
     
-    if(!FolderCreate(g_StorageAccountDir)) {
+    if(!FolderCreate(g_StorageAccountDir, FILE_COMMON)) {
         if(!FileIsExist(g_StorageAccountDir)) {
             Print("⚠️ Не удалось создать папку аккаунта: ", g_StorageAccountDir);
         }
     }
     
-    if(!FolderCreate(g_StorageSymbolDir)) {
+    if(!FolderCreate(g_StorageSymbolDir, FILE_COMMON)) {
         if(!FileIsExist(g_StorageSymbolDir)) {
             Print("⚠️ Не удалось создать папку символа: ", g_StorageSymbolDir);
         }
@@ -190,17 +191,6 @@ void ClearLicenseKeyLocal() {
     if(FileIsExist(licenseFile)) {
         FileDelete(licenseFile);
     }
-}
-
-//+------------------------------------------------------------------+
-//| ПОЛНАЯ ОЧИСТКА ДАННЫХ ЛИЦЕНЗИИ                                 |
-//+------------------------------------------------------------------+
-void ClearAllLicenseData() {
-    ClearLicenseKeyLocal();
-    g_LicenseKey = "";
-    g_LicenseState = LICENSE_INVALID;
-    g_LicenseActivated = false;
-    g_LicenseMessage = "";
 }
 
 //+------------------------------------------------------------------+
@@ -429,20 +419,4 @@ void PeriodicStateSave() {
         SaveRobotState();
         SavePanelSettings();
     }
-}
-
-//+------------------------------------------------------------------+
-//| СОЗДАНИЕ ПАПКИ                                                 |
-//+------------------------------------------------------------------+
-bool FolderCreate(string folder) {
-    // В MQL4 нет прямой функции создания папки
-    // Пытаемся создать файл в папке и удалить его
-    string testFile = folder + "/test.tmp";
-    int handle = FileOpen(testFile, FILE_WRITE | FILE_TXT);
-    if(handle != INVALID_HANDLE) {
-        FileClose(handle);
-        FileDelete(testFile);
-        return true;
-    }
-    return false;
 }
